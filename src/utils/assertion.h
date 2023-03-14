@@ -33,4 +33,4 @@ inline void notify_assertion_violation(const char* fileName, int line, const cha
 #define DEBUG_CODE(x) do { x } while (false)
 #endif
 
-#define SASSERT(x) DEBUG_CODE(VERIFY(x))
+#define SASSERT(x) DEBUG_CODE(VERIFY(x);)

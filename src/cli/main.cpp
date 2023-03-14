@@ -2,7 +2,7 @@
 #include <z3++.h>
 
 #include "modal_to_qeuf.h"
-#include "modal_to_prop.h"
+#include "modal_to_euf.h"
 
 using namespace z3;
 
@@ -15,7 +15,7 @@ int main() {
     const func_decl diamond = ctx.function("Diamond", ctx.bool_sort(), ctx.bool_sort());
     expr e =  diamond(p) && diamond(!p) && box(diamond(diamond(q)));
     //modal_to_qeuf transformer(ctx);
-    modal_to_prop transformer(ctx, true);
+    modal_to_euf transformer(ctx, true);
     transformer.check(e);
     transformer.output_state(std::cout);
     return 0;

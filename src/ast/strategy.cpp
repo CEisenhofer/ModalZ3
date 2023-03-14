@@ -8,15 +8,14 @@ bool strategy::is_modal(const func_decl& decl) const {
     return decl.arity() == 1 && decl.domain(0).is_bool() && (decl.name().str() == "Diamond" || decl.name().str() == "Box");
 }
 
-strategy::strategy(context& ctx, bool simplify) : m_ctx(ctx), m_last_result(z3::unknown), m_solver(), m_simplify(simplify) { }
+strategy::strategy(context& ctx) : m_ctx(ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown), m_solver() { }
 
-expr strategy::simplify(const expr& e) {
+expr strategy::rewrite_formula(const expr& e) {
     std::stack<expr_info> expr_to_process;
-    expr_to_process.push({ e, Z3_L_TRUE, nullptr });
+    expr_to_process.push({ e });
     SASSERT(m_processed_args.empty());
     SASSERT(m_apply_list.empty());
     m_processed_args.push({});
-    modal_cnt = 0;
     
     // ASTs might be highly deeply nested. Rather use iteration than recursion
     while (!expr_to_process.empty()) {
@@ -24,30 +23,27 @@ expr strategy::simplify(const expr& e) {
         expr_to_process.pop();
         
         VERIFY(current.e.is_app()); // For now
-        LOG("Parsing (Simplify): " << current.e);
-        if (!add_children_or_rewrite(expr_to_process, current, false))
+        LOG("Parsing (1): " << current.e);
+        if (!pre_rewrite(expr_to_process, current))
             continue; // We rewrote the expression
             
         m_apply_list.push(current);
         m_processed_args.push({});
         
-        
-        while (!m_apply_list.empty() && (m_apply_list.top().arity <= m_processed_args.top().size()))) {
+        while (!m_apply_list.empty() && (m_apply_list.top().arity <= m_processed_args.top().size())) {
 
             expr_info app = m_apply_list.top();
             m_apply_list.pop();
             expr_vector args(m_ctx);
             
-            LOG("Processing " << app.decl.name() << " / " << app.arity << (app.arity > 0 ? " with" : ""));
+            LOG("Processing (1) " << app.decl.name() << " / " << app.arity << (app.arity > 0 ? " with" : ""));
             for (unsigned i = 0; i < app.arity; i++) {
                 args.push_back(m_processed_args.top()[i]);
                 LOG("\t" << args.back());
             }
             m_processed_args.pop();
             
-            if (!simplify(app, args))
-                continue; // We simplified
-            m_processed_args.top().push_back(current.decl(args));
+            post_rewrite(app, args);
         }
     }
     
@@ -60,47 +56,67 @@ expr strategy::simplify(const expr& e) {
     VERIFY(m_processed_args.top().size() == 1);
     VERIFY(m_apply_list.empty());
     
-    return m_processed_args.top()[0];
+    expr ret = m_processed_args.top()[0];
+    m_processed_args.pop();
+    return ret;
 }
 
-expr strategy::internalize(const expr& e) {
+void strategy::create_syntax_tree(const expr& e) {
     std::stack<expr_info> expr_to_process;
-    expr_to_process.push({ e, Z3_L_TRUE, 0, 0 });
+    expr_info info(e);
+    
+    m_syntax_tree = new syntax_tree(e.ctx()); 
+    info.world = m_syntax_tree->get_root();
+    expr_to_process.push(info);
+    
     SASSERT(m_processed_args.empty());
     SASSERT(m_apply_list.empty());
     m_processed_args.push({});
-    modal_cnt = 0;
     
-    // ASTs might be highly deeply nested. Rather use iteration than recursion
     while (!expr_to_process.empty()) {
         expr_info current = expr_to_process.top();
         expr_to_process.pop();
         
-        VERIFY(current.e.is_app()); // For now
-        LOG("Parsing: " << current.e);
-        if (!add_children_or_rewrite(expr_to_process, current, false))
-            continue; // We rewrote the expression
-            
+        VERIFY(current.e.is_app());
+        LOG("Parsing (2): " << current.e);
+        
+        if (is_modal(current.decl)) {
+            SASSERT(current.decl.name().str() == "Box");
+            syntax_tree_node* existing;
+            if ((existing = current.world->get_child(current.e)) == nullptr) {
+                syntax_tree_node* new_node = m_syntax_tree->create_node();
+                new_node->set_parent(current.world);
+                current.world->add_child(new_node);
+                current.world = new_node;
+                LOG("New potential  world: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));
+            }
+            else
+                current.world = existing;
+        }
+        
+        for (unsigned i = current.e.num_args(); i > 0; i--) {
+            expr_info info2(current.e.arg(i - 1));
+            info2.world = current.world;
+            expr_to_process.push(info2);
+        }
+        
         m_apply_list.push(current);
         m_processed_args.push({});
         
-        
-        while (!m_apply_list.empty() && (m_apply_list.top().arity <= m_processed_args.top().size() || (is_incremental_parsing() && is_modal(m_apply_list.top().decl)))) {
+        while (!m_apply_list.empty() && (m_apply_list.top().arity <= m_processed_args.top().size())) {
 
             expr_info app = m_apply_list.top();
             m_apply_list.pop();
             expr_vector args(m_ctx);
             
-            LOG("Processing " << app.decl.name() << " / " << app.arity << (app.arity > 0 ? " with" : ""));
+            LOG("Processing (2) " << app.decl.name() << " / " << app.arity << (app.arity > 0 ? " with" : ""));
             for (unsigned i = 0; i < app.arity; i++) {
                 args.push_back(m_processed_args.top()[i]);
                 LOG("\t" << args.back());
             }
             m_processed_args.pop();
             
-            if (!simplify(app, args))
-                continue; // We simplified
-            create_app(app, args);
+            prepare_expr(app, args);
         }
     }
     
@@ -112,110 +128,53 @@ expr strategy::internalize(const expr& e) {
     }
     VERIFY(m_processed_args.top().size() == 1);
     VERIFY(m_apply_list.empty());
-    
-    return m_processed_args.top()[0];
 }
 
-void strategy::collect_modals(const expr& e) {
-    std::stack<expr_info> expr_to_process;
-    expr_to_process.push({ e, Z3_L_TRUE, nullptr });
-    world* w = create_world(expr_to_process.top());
-    m_worlds.get_or_create(0, w);
-    expr_to_process.top().world = w; 
-            
-    SASSERT(m_processed_args.empty());
-    modal_cnt = 0;
-    std::vector<expr_info> modals;
-    
-    // ASTs might be highly deeply nested. Rather use iteration than recursion
-    while (!expr_to_process.empty()) {
-        expr_info current = expr_to_process.top();
-        expr_to_process.pop();
-        
-        VERIFY(current.e.is_app()); // For now
-        LOG("Parsing: " << current.e);
-        if (!add_children_or_rewrite(expr_to_process, current, true))
-            continue; // We rewrote the expression
-        if (is_modal(current.decl))
-            add_modal(expr_to_process, current); // TODO: check if already present
-    }
+void strategy::prepare_expr(const expr_info &current, expr_vector &args) {
+    m_processed_args.top().push_back(current.decl(args));
 }
 
-void strategy::incremental_internalize(const expr& e) {
-    if (!is_incremental_parsing()) {
-        internalize(e);
-        return;
-    }
-    collect_modals(e);
-}
-
-static Z3_lbool invert_polarity(Z3_lbool current) {
-    if (current == Z3_L_UNDEF)
-        return Z3_L_UNDEF;
-    if (current == Z3_L_FALSE)
-        return Z3_L_TRUE;
-    return Z3_L_FALSE;
-}
-
-bool strategy::add_children_or_rewrite(std::stack<expr_info>& expr_to_process, expr_info& current, bool analyze){
+bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& current){
     const expr& e = current.e;
     
-    auto add_to_process = [&expr_to_process, &current](Z3_lbool polarity) {
+    auto add_to_process = [&expr_to_process, &current]() {
         for (unsigned i = current.e.num_args(); i > 0; i--) {
-            expr_to_process.push(expr_info(current.e.arg(i - 1), polarity, current.contained_modal_id, current.modal_id));
+            expr_to_process.push(expr_info(current.e.arg(i - 1)));
         }
     };
-    
-    if (e.is_distinct()) {
-        add_to_process(Z3_L_UNDEF);
-        return true;
-    }
-    if (e.is_ite()) {
-        add_to_process(Z3_L_UNDEF);
-        return true;
-    }
     
     // polarity separation not always possible: e.g., \lnot P(\Box Q) - We cannot say if \Box Q may be assumed to be true/false 
     if (e.is_eq()) {
         if (e.arg(0).get_sort().is_bool() && is_blast_eq()) {
-            expr_to_process.push(expr_info(implies(current.e.arg(0), current.e.arg(1)) && implies(current.e.arg(1), current.e.arg(0)), current.polarity, current.contained_modal_id, current.modal_id));
+            expr_to_process.push(expr_info(implies(current.e.arg(0), current.e.arg(1)) && implies(current.e.arg(1), current.e.arg(0))));
             return false;
         }
         else {
-            add_to_process(Z3_L_UNDEF);
+            add_to_process();
             return true;
         }
     }
     if (e.is_implies()) {
-        expr_to_process.push(expr_info(!current.e.arg(0) || current.e.arg(1), current.polarity, current.contained_modal_id, current.modal_id));
+        expr_to_process.push(expr_info(!current.e.arg(0) || current.e.arg(1)));
         return false;
     }
     
     if (is_modal(e.decl())) {
-        current.modal_id = ++modal_cnt;
-        if (!analyze)
-            add_modal(expr_to_process, current);
-        else
-            expr_to_process.push(expr_info(current.e.arg(0), current.polarity, current.modal_id, current.modal_id));
+        // Transform to box-only form by duality (for simplicity)
+        if (e.decl().name().str() == "Diamond") {
+            expr_to_process.push(expr_info(!m_ctx.function("Box", m_ctx.bool_sort(), m_ctx.bool_sort())(!current.e.arg(0))));
+            return false;
+        }
+        expr_to_process.push(expr_info(current.e.arg(0)));
         return true;
     }
     
-    if (e.decl().decl_kind() == Z3_OP_UNINTERPRETED) {
-        add_to_process(Z3_L_UNDEF); // we do not want to consider the case e.g., P(!a || b) [maybe even disable it?]
-        return true;
-    }
-    
-    if (e.is_not())
-        add_to_process(invert_polarity(current.polarity));
-    else
-        add_to_process(current.polarity);
+    add_to_process();
     return true;
 }
 
-// TODO: Convert to NNF? [use polarity information to remove all negations and apply de'morgan based on polarity]
-bool strategy::simplify(expr_info& current, expr_vector& args) {
-    if (!m_simplify)
-        return true;
+// TODO: Convert to NNF?
+bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
     if (current.decl.decl_kind() == Z3_OP_NOT) {
         if (args[0].is_not()) {
             m_processed_args.top().push_back(args[0].arg(0));
@@ -229,6 +188,7 @@ bool strategy::simplify(expr_info& current, expr_vector& args) {
             m_processed_args.top().push_back(current.e.ctx().bool_val(false));
             return false;
         }
+        m_processed_args.top().push_back(current.decl(args));
         return true;
     }
     if (current.decl.decl_kind() == Z3_OP_AND) {
@@ -260,6 +220,7 @@ bool strategy::simplify(expr_info& current, expr_vector& args) {
         SASSERT(last <= args.size());
         current.arity = last;
         args.resize(last);
+        m_processed_args.top().push_back(current.decl(args));
         return true;
     }
     if (current.decl.decl_kind() == Z3_OP_OR) {
@@ -291,45 +252,36 @@ bool strategy::simplify(expr_info& current, expr_vector& args) {
         SASSERT(last <= args.size());
         current.arity = last;
         args.resize(last);
+        m_processed_args.top().push_back(current.decl(args));
         return true;
     }
     if (is_modal(current.decl)) {
-        if (current.decl.name().str() == "Box") {
-            if (args[0].is_true()) {
-                m_processed_args.top().push_back(current.e.ctx().bool_val(true));
-                return false; 
-            }
+        SASSERT(current.decl.name().str() == "Box");
+        if (args[0].is_true()) {
+            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+            return false;
         }
-        else {
-            SASSERT(current.decl.name().str() == "Diamond");
-            if (args[0].is_false()) {
-                m_processed_args.top().push_back(current.e.ctx().bool_val(false));
-                return false; 
-            }
-        }
+        m_processed_args.top().push_back(current.decl(args));
         return true;
     }
+    m_processed_args.top().push_back(current.decl(args));
     return true;
 }
 
-void strategy::add_modal(std::stack<expr_info>& expr_to_process, expr_info& current) {
-    world& contained_world = m_worlds.get(current.contained_modal_id);
-    world& current_world = m_worlds.get_or_create(current.modal_id, create_world(current));
-    contained_world.create_relation(current.e.ctx(), current_world);
+expr strategy::simplify(const expr& e) {
+    return rewrite_formula(e);
 }
 
-world* strategy::create_world(expr_info& info) {
-    return new world(info);
-}
-
-check_result strategy::check(const expr& e) {
+check_result strategy::check(expr e) {
     if (!m_solver.has_value())
         m_solver = solver(m_ctx);
     
     LOG("Raw input:\n" << e << "\n");
-    expr processed = incremental_internalize(e);
-    LOG("\nProcessed:\n" << processed << "\n");
-    m_solver->add(processed);
+    e = rewrite_formula(e);
+    LOG("\nProcessed:\n" << e << "\n");
+    create_syntax_tree(e);
+    apply_syntax_tree();
+    m_solver->add(e);
     m_last_result = m_solver->check();
     return m_last_result;
 }

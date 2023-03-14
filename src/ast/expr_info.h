@@ -1,36 +1,31 @@
 #pragma once
 #include "z3++.h"
+#include "syntax_tree.h"
 
 using namespace z3;
-
-class world;
 
 struct expr_info {
     expr e;
     func_decl decl;
-    Z3_lbool polarity;
-    unsigned arity; // don't use decl.arity()!! 
+    unsigned arity; // don't use decl.arity()!! fails e.g., for "and"
     
-    world* world;
+    syntax_tree_node* world;
     
-    expr_info(const expr& e, Z3_lbool polarity, class world* w) :
+    expr_info(const expr& e) :
         e(e),
         decl(e.decl()),
-        polarity(polarity),
         arity(e.num_args()),
-        world(w) {}
+        world(nullptr) {}
     
     expr_info(const expr_info& other) :
         e(other.e),
         decl(other.decl),
-        polarity(other.polarity),
         arity(other.arity),
         world(other.world) {}
     
     expr_info& operator=(const expr_info& other) {
         e = other.e;
         decl = other.decl;
-        polarity = other.polarity;
         arity = other.arity;
         world = other.world;
         return *this;
