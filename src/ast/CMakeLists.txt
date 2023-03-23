@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19.2)
+cmake_minimum_required(VERSION 3.18.4)
 
 add_library(ast
     modal_to_qeuf.cpp

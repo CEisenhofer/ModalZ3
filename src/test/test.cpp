@@ -1,5 +1,3 @@
-#pragma once
-
 #include <iostream>
 
 #include "modal_to_qeuf.h"

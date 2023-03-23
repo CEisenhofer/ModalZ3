@@ -48,7 +48,8 @@ public:
 
     unsigned get_variable(const func_decl& decl);
 
-    void fixed(const expr& e, const expr& value) override;
+    // TODO Clemens: doesn't override anything because user_propagator_base::fixed is not virtual
+    void fixed(const expr& e, const expr& value);
 
     ~lazy_up() {
         while (!m_trail.empty()) {

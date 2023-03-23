@@ -14,10 +14,11 @@ class random_formula {
     std::vector<std::tuple<unsigned, unsigned, std::function<expr(random_formula&, std::vector<func_decl>&, unsigned d)>>> m_cases;
     
     std::mt19937 m_mt;
-    const std::uniform_int_distribution<unsigned> m_expr_gen;
-    const std::weibull_distribution<double> m_arg_cnt_gen;
-    const std::uniform_int_distribution<unsigned> m_general_gen;
-    const std::bernoulli_distribution m_new_var_gen;
+    // TODO Clemens did you mean these to be const? you can't sample from them if so
+    std::uniform_int_distribution<unsigned> m_expr_gen;
+    std::weibull_distribution<double> m_arg_cnt_gen;
+    std::uniform_int_distribution<unsigned> m_general_gen;
+    std::bernoulli_distribution m_new_var_gen;
     
     unsigned m_max_depth;
     

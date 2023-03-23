@@ -1,5 +1,3 @@
-#pragma once
-
 #include <stack>
 
 #include "modal_to_euf.h"

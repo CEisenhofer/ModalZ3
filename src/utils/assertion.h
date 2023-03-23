@@ -3,12 +3,14 @@
 
 #include <iostream>
 
+// Clemens this is cursed, why?
 #ifdef NDEBUG
 #define INVOKE_DEBUGGER() exit(-1)
 #else
 #ifdef _WINDOWS
 #define INVOKE_DEBUGGER() __debugbreak()
 #else
+#include <csignal>
 #define INVOKE_DEBUGGER() raise(SIGTRAP)
 #endif
 #endif
@@ -26,7 +28,7 @@ inline void notify_assertion_violation(const char* fileName, int line, const cha
         notify_assertion_violation(__FILE__, __LINE__, "Failed to verify: " #x "\n");   \
     }                                                                                   \
 } while (false)
-    
+
 #ifdef NDEBUG
 #define DEBUG_CODE(x) do { } while (false)
 #else

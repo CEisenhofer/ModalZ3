@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.19.2)
+cmake_minimum_required(VERSION 3.18.4)
 project (Z3Modal)
 
 set(CMAKE_CXX_STANDARD 20)

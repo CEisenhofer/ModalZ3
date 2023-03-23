@@ -1,5 +1,3 @@
-#pragma once
-
 #include "assertion.h"
 #include "logging.h"
 #include "strategy.h"

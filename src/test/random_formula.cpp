@@ -1,5 +1,3 @@
-#pragma once
-
 #include "random_formula.h"
 
 decltype(random_formula::m_cases) random_formula::create_cases(random_formula* f) {

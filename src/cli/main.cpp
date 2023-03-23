@@ -7,7 +7,6 @@
 using namespace z3;
 
 int main() {
-    
     context ctx;
     const expr p = ctx.bool_const("P");
     const expr q = ctx.bool_const("Q");

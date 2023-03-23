@@ -133,7 +133,7 @@ public:
         return m_nodes.size();
     }
 
-    modal_tree_node* get(const expr& e) const {
+    modal_tree_node* get(const z3::expr& e) const {
         auto iterator = m_expr_to_node.find(e);
         SASSERT(iterator != m_expr_to_node.end());
         return iterator->second;
