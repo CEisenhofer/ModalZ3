@@ -88,7 +88,7 @@ void strategy::create_syntax_tree(const expr& e) {
                 new_node->set_parent(current.world);
                 current.world->add_child(new_node);
                 current.world = new_node;
-                LOG("New potential  world: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));
+                LOG("New potential world: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));
             }
             else
                 current.world = existing;

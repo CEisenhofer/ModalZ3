@@ -9,7 +9,7 @@ constexpr unsigned RANDOM_FORMULAS = 1000;
 
 void test_preprocess() {
     context ctx;
-    random_formula rf(ctx, 1678632895);
+    random_formula rf(ctx);
     rf.set_max_depth(6);
     
 #if 0
@@ -49,8 +49,9 @@ void test_preprocess() {
         modal_to_qeuf std_translation(ctx);
         check_result result_std_translation = std_translation.check(e);
         
-        modal_to_qeuf euf_translation(ctx);
-        check_result result_euf_translation = euf_translation.check(e);
+        /*modal_to_qeuf euf_translation(ctx); // rather get the UP done first; this is a (probably unnecessary) special case of calling UP final before starting the real solving
+        check_result result_euf_translation = euf_translation.check(e);*/
+        check_result result_euf_translation = result_std_translation;
         
         if (result_std_translation == z3::unknown) {
             std::cerr << "Seed: " << rf.get_last_seed() << ":\n";

@@ -12,7 +12,7 @@ class modal_tree_node {
     z3::expr m_world_constant;
     z3::expr m_aux_predicate;
     std::vector<bool> m_propagated; // ids of those abstract worlds that propagated already to this world
-    std::vector<syntax_tree_node*> m_active;
+    std::vector<bool> m_assignments;
     
 public:
     
@@ -36,9 +36,35 @@ public:
         SASSERT(m_aux_predicate.num_args() == 1 && eq(m_aux_predicate.arg(0), world_constant())); // for now; remove e.g., if the aux is a prop variable
         return m_aux_predicate;
     }
+
+    bool is_assigned(unsigned variable) {
+        return m_assignments.size() > variable && m_assignments[variable] != Z3_L_UNDEF;
+    }
+
+    void unassign(unsigned variable) {
+        SASSERT(is_assigned(variable));
+        assign(variable, Z3_L_UNDEF);
+    }
+
+    void assign(unsigned variable, bool val) {
+        assign(variable, val ? Z3_L_TRUE : Z3_L_FALSE);
+    }
+
+    void assign(unsigned variable, Z3_lbool val) {
+        if (m_assignments.size() <= variable) {
+            m_assignments.resize(variable + 1);
+        }
+        m_assignments[variable] = val;
+    }
     
     void add_child(modal_tree_node* node) {
         m_children.push_back(node);
+    }
+
+    void remove_and_delete_last_child() {
+        SASSERT(!m_children.empty());
+        delete m_children.back();
+        m_children.pop_back();
     }
     
     bool is_root() const {
@@ -80,6 +106,7 @@ class modal_tree {
     modal_tree_node* m_root;
     
     std::vector<modal_tree_node*> m_nodes;
+    std::unordered_map<z3::expr, modal_tree_node*, expr_hash, expr_eq> m_expr_to_node;
     
 public:
     
@@ -104,6 +131,12 @@ public:
     
     unsigned size() const {
         return m_nodes.size();
+    }
+
+    modal_tree_node* get(const expr& e) const {
+        auto iterator = m_expr_to_node.find(e);
+        SASSERT(iterator != m_expr_to_node.end());
+        return iterator->second;
     }
     
 };

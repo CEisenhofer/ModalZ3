@@ -8,6 +8,8 @@
 #include "modal_tree.h"
 #include "modal_to_euf_base.h"
 
+#if 0
+
 using namespace z3;
 
 struct euf_info : info {
@@ -35,3 +37,4 @@ public:
     
     modal_to_euf(context& ctx);
 };
+#endif

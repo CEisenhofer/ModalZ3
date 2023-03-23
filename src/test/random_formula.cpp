@@ -44,7 +44,7 @@ decltype(random_formula::m_cases) random_formula::create_cases(random_formula* f
 
     return v;
 }
-#include <iostream>
+
 unsigned random_formula::sum_cases() {
     unsigned total = 0;
     for (const auto& m_case : m_cases)

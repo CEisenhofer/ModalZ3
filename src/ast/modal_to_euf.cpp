@@ -5,6 +5,8 @@
 #include "modal_to_euf.h"
 #include "assertion.h"
 
+#if 0
+
 z3::expr instantiate(modal_tree_node* n) {
     z3::expr_vector dst(n->world_constant().ctx());
     dst.push_back(n->world_constant());
@@ -140,3 +142,4 @@ void modal_to_euf::output_model(const model& model, std::ostream& ostream){
     }*/
     
 }
+#endif
