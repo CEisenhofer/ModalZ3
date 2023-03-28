@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vector>
 #include <stack>
+#include <vector>
 #include <z3++.h>
 
 #include "assertion.h"
@@ -17,10 +17,15 @@ struct expr_eq {
     }
 };
 
-struct info {
-    
-    virtual ~info() {}
-    
+struct func_decl_hash {
+    size_t operator()(const z3::func_decl& f) const {
+        return f.hash();
+    }
+};
+struct func_decl_eq {
+    bool operator()(const z3::func_decl& f1, const z3::func_decl& f2) const {
+        return eq(f1, f2);
+    }
 };
 
 class syntax_tree_node {
@@ -28,54 +33,40 @@ class syntax_tree_node {
     friend class syntax_tree;
     
     unsigned m_id;
-    syntax_tree_node* m_parent = nullptr;
+    syntax_tree_node* const m_parent;
     std::vector<syntax_tree_node*> m_children;
     
-    z3::expr m_expr; // something used to create instances
+    const unsigned m_relation;
+
+    z3::expr m_template; // something used to create instances
+    const z3::expr m_aux; // the expression that triggers this node
+
+    std::unordered_map<z3::expr, syntax_tree_node*, expr_hash, expr_eq> m_expr_to_repr; // not necessarily equal to m_template [can be rewritten]. The map contains the original expressions
     
-    std::unordered_map<z3::expr, syntax_tree_node*, expr_hash, expr_eq> m_expr_to_child; // not necessarily equal to m_ast [can be rewritten]. The map contains the original expressions
-    
-    syntax_tree_node(unsigned id, z3::context& c) : m_id(id), m_expr(c) { }
+    syntax_tree_node(unsigned id, syntax_tree_node* parent, unsigned relation, const z3::expr& aux) : m_id(id), m_parent(parent), m_relation(relation), m_template(aux.ctx()), m_aux(aux) {}
     
 public:
     
-    info* m_info = nullptr;
-    
-    virtual ~syntax_tree_node() {
-        delete m_info;
-    }
-    
-    syntax_tree_node* get_child(const z3::expr& e) const {
-        auto it = m_expr_to_child.find(e);
-        if (it == m_expr_to_child.end())
-            return nullptr;
-        return it->second;
-    }
-    
+    syntax_tree_node* get_child(const z3::expr& e) const;
+
     unsigned get_id() const {
         return m_id;
     }
-    
-    void set_parent(syntax_tree_node* node) {
-        m_parent = node;
-    }
-    
+
     const syntax_tree_node* get_parent() const {
         return m_parent;
     }
-    
-    void set_expr(const z3::expr& e) {
-        m_expr = e;
+
+    void set_template(const z3::expr& temp) {
+        m_template = temp;
     }
-    
-    const z3::expr& get_template() const {
-        return m_expr;
+
+    z3::expr get_template(bool pos) const;
+
+    z3::expr get_aux() const {
+        return m_aux;
     }
-    
-    void add_child(syntax_tree_node* node) {
-        m_children.push_back(node);
-    }
-    
+
     bool is_root() const {
         return m_parent == nullptr;
     }
@@ -88,41 +79,38 @@ public:
         return m_children.end();
     }
     
-    unsigned get_depth() const {
-        unsigned depth = 0;
-        const syntax_tree_node* prev = this;
-        for (; prev->is_root(); depth++) {}
-        return depth;
+    unsigned get_relation() const {
+        return m_relation;
     }
-    
+
+    z3::expr initialize(const z3::expr& world, bool positive) const;
+
+    std::string to_string() const;
+    std::string aux_to_string() const;
 };
+
+class modal_to_euf_base;
 
 class syntax_tree {
     
-    z3::context& m_ctx;
-    
-    unsigned m_size;
     std::vector<syntax_tree_node*> m_nodes;
+    modal_to_euf_base* const m_base;
     syntax_tree_node* const m_root;
-    
-    
+    std::unordered_map<z3::func_decl, syntax_tree_node*, func_decl_hash, func_decl_eq> m_func_to_abs;
+
 public:
     
-    syntax_tree(z3::context& c) : m_ctx(c), m_size(0), m_root(create_node()) { }
+    syntax_tree(modal_to_euf_base* base);
     
-    syntax_tree_node* get_root() const {
-        return m_root;
-    }
-    
-    syntax_tree_node* create_node() {
-        syntax_tree_node* node = new syntax_tree_node(m_size++, m_ctx);
-        m_nodes.push_back(node);
-        return node;
-    }
-    
-    z3::context& ctx() {
-        return m_ctx;
-    }
+    syntax_tree_node* get_root() const;
+
+    const z3::sort& get_world_sort() const;
+
+    syntax_tree_node* create_node(syntax_tree_node* parent, unsigned relation, const z3::expr& orig_subformula);
+
+    syntax_tree_node* get_node(const z3::func_decl& f);
+
+    z3::context& ctx();
     
     ~syntax_tree() {
         for (auto& n : m_nodes)

@@ -1,5 +1,6 @@
 #pragma once
 
+#if 0
 #include <unordered_set>
 #include <z3++.h>
 
@@ -8,7 +9,6 @@
 #include "modal_tree.h"
 #include "modal_to_euf_base.h"
 
-#if 0
 
 using namespace z3;
 

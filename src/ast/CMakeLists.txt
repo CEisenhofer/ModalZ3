@@ -5,6 +5,7 @@ add_library(ast
     modal_to_euf.cpp
     lazy_up.cpp
     strategy.cpp
+    syntax_tree.cpp
 )
 
 target_link_libraries(ast utils)

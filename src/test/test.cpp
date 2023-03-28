@@ -5,7 +5,7 @@
 
 constexpr unsigned RANDOM_FORMULAS = 1000;
 
-void test_preprocess() {
+void test() {
     context ctx;
     random_formula rf(ctx);
     rf.set_max_depth(6);
@@ -73,7 +73,7 @@ void test_preprocess() {
 
 int main() {
 
-    test_preprocess();
+    test();
     
     return 0;
 }

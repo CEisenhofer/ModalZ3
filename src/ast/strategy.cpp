@@ -6,9 +6,9 @@ bool strategy::is_modal(const func_decl& decl) const {
     return decl.arity() == 1 && decl.domain(0).is_bool() && (decl.name().str() == "Diamond" || decl.name().str() == "Box");
 }
 
-strategy::strategy(context& ctx) : m_ctx(ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown), m_solver() { }
+strategy::strategy(context& ctx) : m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown) { }
 
-expr strategy::rewrite_formula(const expr& e) {
+expr strategy::simplify_formula(const expr& e) {
     std::stack<expr_info> expr_to_process;
     expr_to_process.push({ e });
     SASSERT(m_processed_args.empty());
@@ -57,79 +57,6 @@ expr strategy::rewrite_formula(const expr& e) {
     expr ret = m_processed_args.top()[0];
     m_processed_args.pop();
     return ret;
-}
-
-void strategy::create_syntax_tree(const expr& e) {
-    std::stack<expr_info> expr_to_process;
-    expr_info info(e);
-    
-    m_syntax_tree = new syntax_tree(e.ctx()); 
-    info.world = m_syntax_tree->get_root();
-    expr_to_process.push(info);
-    
-    SASSERT(m_processed_args.empty());
-    SASSERT(m_apply_list.empty());
-    m_processed_args.push({});
-    
-    while (!expr_to_process.empty()) {
-        expr_info current = expr_to_process.top();
-        expr_to_process.pop();
-        
-        VERIFY(current.e.is_app());
-        LOG("Parsing (2): " << current.e);
-        
-        if (is_modal(current.decl)) {
-            SASSERT(current.decl.name().str() == "Box");
-            syntax_tree_node* existing;
-            if ((existing = current.world->get_child(current.e)) == nullptr) {
-                syntax_tree_node* new_node = m_syntax_tree->create_node();
-                new_node->set_parent(current.world);
-                current.world->add_child(new_node);
-                current.world = new_node;
-                LOG("New potential world: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));
-            }
-            else
-                current.world = existing;
-        }
-        
-        for (unsigned i = current.e.num_args(); i > 0; i--) {
-            expr_info info2(current.e.arg(i - 1));
-            info2.world = current.world;
-            expr_to_process.push(info2);
-        }
-        
-        m_apply_list.push(current);
-        m_processed_args.push({});
-        
-        while (!m_apply_list.empty() && (m_apply_list.top().arity <= m_processed_args.top().size())) {
-
-            expr_info app = m_apply_list.top();
-            m_apply_list.pop();
-            expr_vector args(m_ctx);
-            
-            LOG("Processing (2) " << app.decl.name() << " / " << app.arity << (app.arity > 0 ? " with" : ""));
-            for (unsigned i = 0; i < app.arity; i++) {
-                args.push_back(m_processed_args.top()[i]);
-                LOG("\t" << args.back());
-            }
-            m_processed_args.pop();
-            
-            prepare_expr(app, args);
-        }
-    }
-    
-    VERIFY(m_processed_args.size() == 1);
-    if (m_processed_args.top().size() != 1) {
-        for (unsigned i = 0; i < m_processed_args.top().size(); i++) {
-            LOG("\tInvalid element: " << m_processed_args.top()[i]);
-        }
-    }
-    VERIFY(m_processed_args.top().size() == 1);
-    VERIFY(m_apply_list.empty());
-}
-
-void strategy::prepare_expr(const expr_info &current, expr_vector &args) {
-    m_processed_args.top().push_back(current.decl(args));
 }
 
 bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& current){
@@ -267,24 +194,21 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
 }
 
 expr strategy::simplify(const expr& e) {
-    return rewrite_formula(e);
+    return simplify_formula(e);
 }
 
 check_result strategy::check(expr e) {
-    if (!m_solver.has_value())
-        m_solver = solver(m_ctx);
-    
     LOG("Raw input:\n" << e << "\n");
-    e = rewrite_formula(e);
+    e = simplify_formula(e);
     LOG("\nProcessed:\n" << e << "\n");
-    create_syntax_tree(e);
-    apply_syntax_tree();
-    m_solver->add(e);
-    m_last_result = m_solver->check();
+    e = create_formula(e);
+    LOG("Adding: " << e);
+    m_solver.add(e);
+    m_last_result = m_solver.check();
     return m_last_result;
 }
 
-void strategy::output_state(std::ostream & ostream) {
+void strategy::output_state(std::ostream& ostream) {
     if (!m_solver) {
         ostream << "No result yet!\n";
         return;
@@ -292,14 +216,15 @@ void strategy::output_state(std::ostream & ostream) {
     switch (m_last_result) {
         case sat:
             ostream << "SAT:\n";
-            output_model(m_solver->get_model(), ostream);
+            output_model(m_solver.get_model(), ostream);
             break;
         case unsat:
             ostream << "UNSAT\n";
             break;
         default:
-            ostream << "UNKNOWN:\n\t" << m_solver->reason_unknown();
+            ostream << "UNKNOWN:\n\t" << m_solver.reason_unknown();
             break;
     }
+    std::flush(ostream);
 }
 

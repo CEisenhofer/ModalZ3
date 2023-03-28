@@ -7,7 +7,7 @@ using namespace z3;
 struct expr_info {
     expr e;
     func_decl decl;
-    unsigned arity; // don't use decl.arity()!! fails e.g., for "and"
+    unsigned arity; // don't use decl.arity()! might fail e.g., for "and"
     
     syntax_tree_node* world;
     

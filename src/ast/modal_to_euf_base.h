@@ -16,10 +16,10 @@ protected:
     
     sort m_world_sort;
     func_decl_vector m_relation;
-    
     func_decl_vector m_uf_list;
-    std::unordered_set<std::string> m_uf_set;
-    
+    std::unordered_set<func_decl, func_decl_hash, func_decl_eq> m_uf_set;
+    std::unordered_map<func_decl, unsigned, func_decl_hash, func_decl_eq> m_uf_to_id;
+
 public:
 
     modal_to_euf_base(context& ctx) : 
@@ -29,6 +29,10 @@ public:
         m_uf_list(ctx) {
     
         m_relation.push_back(ctx.function("R", m_world_sort, m_world_sort, ctx.bool_sort())); // TODO: Muli-Modal
+    }
+
+    const z3::sort& get_world_sort() const {
+        return m_world_sort;
     }
     
     z3::expr get_world_constant(unsigned id) const {

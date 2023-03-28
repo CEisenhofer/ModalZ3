@@ -3,36 +3,6 @@
 #include "modal_to_qeuf.h"
 #include "assertion.h"
 
-void modal_to_qeuf::prepare_expr(const expr_info &current, expr_vector &args) {
-    if (current.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
-        if (is_modal(current.decl)) { // Modal operator
-            SASSERT(current.decl.name().str() == "Box");
-            SASSERT(current.world->get_parent());
-            expr oldW = get_world(current.world->get_parent()->get_id());
-            expr newW = get_world(current.world->get_id());
-            m_processed_args.top().push_back(z3::forall(newW, implies(m_relation[0](oldW, newW), args[0])));
-        }
-        else { // we attach the world sort
-            sort_vector domain(m_ctx);
-            for (const z3::expr& arg : args)
-                domain.push_back(arg.get_sort());
-            domain.push_back(m_world_sort);
-            args.push_back(expr(m_ctx, get_world(current.world->get_id())));
-        
-            func_decl new_func = m_ctx.function(current.decl.name(), domain, current.decl.range());
-            m_processed_args.top().push_back(new_func(args));
-            
-            if (!m_uf_set.contains(new_func.name().str())) {
-                m_uf_set.insert(new_func.name().str());
-                m_uf_list.push_back(new_func);
-            }
-        }
-    }
-    else
-        strategy::prepare_expr(current, args);
-}
-
-
 expr modal_to_qeuf::get_world(unsigned id) {
     if (id < m_world_variables.size()) 
         return m_world_variables[id];
@@ -47,7 +17,85 @@ modal_to_qeuf::modal_to_qeuf(context& ctx) :
         modal_to_euf_base(ctx),
         m_world_variables(ctx) { }
 
-void modal_to_qeuf::output_model(const model& model, std::ostream& ostream){
+expr modal_to_qeuf::create_formula(const expr& e) {
+    std::stack<expr_info> expr_to_process;
+    expr_info info(e);
+    expr_to_process.push(info);
+
+    SASSERT(m_processed_args.empty());
+    SASSERT(m_apply_list.empty());
+    m_processed_args.push({});
+
+    while (!expr_to_process.empty()) {
+        expr_info current = expr_to_process.top();
+        expr_to_process.pop();
+
+        VERIFY(current.e.is_app());
+        LOG("Parsing (2): " << current.e);
+
+        for (unsigned i = current.e.num_args(); i > 0; i--) {
+            expr_info info2(current.e.arg(i - 1));
+            info2.world = current.world;
+            expr_to_process.push(info2);
+        }
+
+        m_apply_list.push(current);
+        m_processed_args.push({});
+
+        while (!m_apply_list.empty() && (m_apply_list.top().arity <= m_processed_args.top().size())) {
+            expr_info app = m_apply_list.top();
+            m_apply_list.pop();
+            expr_vector args(m_ctx);
+
+            LOG("Processing (2) " << app.decl.name() << " / " << app.arity << (app.arity > 0 ? " with" : ""));
+            for (unsigned i = 0; i < app.arity; i++) {
+                args.push_back(m_processed_args.top()[i]);
+                LOG("\t" << args.back());
+            }
+            m_processed_args.pop();
+
+            if (current.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
+                if (is_modal(current.decl)) { // Modal operator
+                    SASSERT(current.decl.name().str() == "Box");
+                    SASSERT(current.world->get_parent());
+                    expr oldW = get_world(current.world->get_parent()->get_id());
+                    expr newW = get_world(current.world->get_id());
+                    m_processed_args.top().push_back(z3::forall(newW, implies(m_relation[0](oldW, newW), args[0])));
+                }
+                else { // we attach the world sort
+                    sort_vector domain(m_ctx);
+                    for (const z3::expr& arg : args)
+                        domain.push_back(arg.get_sort());
+                    domain.push_back(m_world_sort);
+                    args.push_back(expr(m_ctx, get_world(current.world->get_id())));
+
+                    func_decl new_func = m_ctx.function(current.decl.name(), domain, current.decl.range());
+                    m_processed_args.top().push_back(new_func(args));
+                    if (!m_uf_to_id.contains(app.decl)) {
+                        m_uf_list.push_back(app.decl);
+                        m_uf_to_id[app.decl] = m_uf_to_id.size();
+                    }
+                }
+            }
+            else
+                m_processed_args.top().push_back(current.decl(args));
+        }
+    }
+
+    VERIFY(m_processed_args.size() == 1);
+    if (m_processed_args.top().size() != 1) {
+        for (unsigned i = 0; i < m_processed_args.top().size(); i++) {
+            LOG("\tInvalid element: " << m_processed_args.top()[i]);
+        }
+    }
+    VERIFY(m_processed_args.top().size() == 1);
+    VERIFY(m_apply_list.empty());
+    expr ret = m_processed_args.top()[0];
+    m_processed_args.pop();
+    return ret;
+}
+
+void modal_to_qeuf::output_model(const model& model, std::ostream& ostream) {
     expr_vector domain = expr_vector(m_ctx, Z3_model_get_sort_universe(m_ctx, model, m_world_sort));
     for (const auto& r : m_relation) {
         ostream << "Relation " << r.name().str() << ":\n";
@@ -84,5 +132,4 @@ void modal_to_qeuf::output_model(const model& model, std::ostream& ostream){
         }
         ostream << "\n";
     }
-    
 }

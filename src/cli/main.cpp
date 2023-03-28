@@ -6,6 +6,7 @@
 
 #include "modal_to_qeuf.h"
 #include "modal_to_euf.h"
+#include "lazy_up.h"
 
 const char *HELP =
 "expects two arguments:\n"
@@ -119,8 +120,11 @@ int main(int argc, char **argv) {
     const func_decl box = ctx.function("Box", ctx.bool_sort(), ctx.bool_sort());
     const func_decl diamond = ctx.function("Diamond", ctx.bool_sort(), ctx.bool_sort());
     expr e =  diamond(p) && diamond(!p) && box(diamond(diamond(q)));
-    modal_to_qeuf transformer(ctx);
-    //modal_to_euf transformer(ctx, true);
+    //modal_to_qeuf transformer(ctx);
+    //modal_to_euf transformer(ctx);
+
+    e = diamond(p);
+    lazy_up transformer(ctx);
     transformer.check(e);
     transformer.output_state(std::cout);
     */
