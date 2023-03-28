@@ -56,7 +56,7 @@ expr modal_to_qeuf::create_formula(const expr& e) {
 
             if (current.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
                 if (is_modal(current.decl)) { // Modal operator
-                    SASSERT(current.decl.name().str() == "Box");
+                    SASSERT(current.decl.name().str() == "box");
                     SASSERT(current.world->get_parent());
                     expr oldW = get_world(current.world->get_parent()->get_id());
                     expr newW = get_world(current.world->get_id());

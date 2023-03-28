@@ -85,7 +85,7 @@ expr lazy_up::create_formula(const expr& e) {
             LOG("Parsing (2): " << current.e);
 
             if (is_modal(current.decl)) {
-                SASSERT(current.decl.name().str() == "Box");
+                SASSERT(current.decl.name().str() == "box");
                 syntax_tree_node* existing;
                 if ((existing = current.world->get_child(current.e)) == nullptr) {
                     syntax_tree_node* new_node = m_syntax_tree->create_node(current.world, 0 /* TODO */, current.e);

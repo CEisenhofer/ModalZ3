@@ -9,9 +9,9 @@
 #include "lazy_up.h"
 
 const char *HELP =
-"expects two arguments:\n"
-"1. mode: one of 'id' (iterative deepening), TODO more\n"
-"2. path to an SMTLIB2 benchmark\n";
+" Mode [Path]:\n\n"
+"Mode\t one of: 1 (standard translation), 2 (iterative deepening), 3 (user-propagator; lazy), 4 (user-propagator; eager)\n"
+"Path to an SMTLIB2 benchmark\n";
 
 // global context
 z3::context CTX;
@@ -117,8 +117,8 @@ int main(int argc, char **argv) {
     context ctx;
     const expr p = ctx.bool_const("P");
     const expr q = ctx.bool_const("Q");
-    const func_decl box = ctx.function("Box", ctx.bool_sort(), ctx.bool_sort());
-    const func_decl diamond = ctx.function("Diamond", ctx.bool_sort(), ctx.bool_sort());
+    const func_decl box = ctx.function("box", ctx.bool_sort(), ctx.bool_sort());
+    const func_decl diamond = ctx.function("dia", ctx.bool_sort(), ctx.bool_sort());
     expr e =  diamond(p) && diamond(!p) && box(diamond(diamond(q)));
     //modal_to_qeuf transformer(ctx);
     //modal_to_euf transformer(ctx);

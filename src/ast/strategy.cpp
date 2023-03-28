@@ -3,7 +3,7 @@
 #include "strategy.h"
 
 bool strategy::is_modal(const func_decl& decl) const {
-    return decl.arity() == 1 && decl.domain(0).is_bool() && (decl.name().str() == "Diamond" || decl.name().str() == "Box");
+    return decl.arity() == 1 && decl.domain(0).is_bool() && (decl.name().str() == "dia" || decl.name().str() == "box");
 }
 
 strategy::strategy(context& ctx) : m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown) { }
@@ -86,8 +86,8 @@ bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& cu
     
     if (is_modal(e.decl())) {
         // Transform to box-only form by duality (for simplicity)
-        if (e.decl().name().str() == "Diamond") {
-            expr_to_process.push(expr_info(!m_ctx.function("Box", m_ctx.bool_sort(), m_ctx.bool_sort())(!current.e.arg(0))));
+        if (e.decl().name().str() == "dia") {
+            expr_to_process.push(expr_info(!m_ctx.function("box", m_ctx.bool_sort(), m_ctx.bool_sort())(!current.e.arg(0))));
             return false;
         }
         expr_to_process.push(expr_info(current.e.arg(0)));
@@ -181,7 +181,7 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
         return true;
     }
     if (is_modal(current.decl)) {
-        SASSERT(current.decl.name().str() == "Box");
+        SASSERT(current.decl.name().str() == "box");
         if (args[0].is_true()) {
             m_processed_args.top().push_back(current.e.ctx().bool_val(true));
             return false;

@@ -47,7 +47,7 @@ syntax_tree_node* syntax_tree::create_node(syntax_tree_node* parent, unsigned re
     SASSERT(parent);
     z3::sort domain = get_world_sort();
     Z3_sort z3_domain = domain;
-    z3::func_decl decl(ctx(), Z3_mk_fresh_func_decl(ctx(), "Box", 1, &z3_domain, ctx().bool_sort()));
+    z3::func_decl decl(ctx(), Z3_mk_fresh_func_decl(ctx(), "box", 1, &z3_domain, ctx().bool_sort()));
     z3::sort_vector domain_vector(ctx());
     domain_vector.push_back(domain);
     decl = ctx().user_propagate_function(decl.name(), domain_vector, ctx().bool_sort());

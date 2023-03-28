@@ -27,8 +27,8 @@ decltype(random_formula::m_cases) random_formula::create_cases(random_formula* f
     });
     v.emplace_back(1, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return implies(f.get_subexpr(v, d), f.get_subexpr(v, d)); });
     v.emplace_back(3, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return !f.get_subexpr(v, d); });
-    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.function("Diamond", f.m_ctx.bool_sort(), f.m_ctx.bool_sort())(f.get_subexpr(v, d)); });
-    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.function("Box", f.m_ctx.bool_sort(), f.m_ctx.bool_sort())(f.get_subexpr(v, d)); });
+    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.function("dia", f.m_ctx.bool_sort(), f.m_ctx.bool_sort())(f.get_subexpr(v, d)); });
+    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.function("box", f.m_ctx.bool_sort(), f.m_ctx.bool_sort())(f.get_subexpr(v, d)); });
     v.emplace_back(5, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
         if (!v.empty() && f.m_new_var_gen(f.m_mt)) {
             return v[(f.m_general_gen(f.m_mt) % v.size())](); 

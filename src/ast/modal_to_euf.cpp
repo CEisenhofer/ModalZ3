@@ -66,7 +66,7 @@ void modal_to_euf::prepare_expr(const expr_info &current, expr_vector &args) {
     
     if (current.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
         if (is_modal(current.decl)) { // Modal operator
-            SASSERT(current.decl.name().str() == "Box");
+            SASSERT(current.decl.name().str() == "box");
             SASSERT(current.world->get_parent());
             expr x(m_ctx, Z3_mk_bound(m_ctx, 0, m_world_sort));
             if (current.world->m_info) {
