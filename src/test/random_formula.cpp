@@ -27,8 +27,8 @@ decltype(random_formula::m_cases) random_formula::create_cases(random_formula* f
     });
     v.emplace_back(1, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return implies(f.get_subexpr(v, d), f.get_subexpr(v, d)); });
     v.emplace_back(3, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return !f.get_subexpr(v, d); });
-    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.function("dia", f.m_ctx.bool_sort(), f.m_ctx.bool_sort())(f.get_subexpr(v, d)); });
-    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.function("box", f.m_ctx.bool_sort(), f.m_ctx.bool_sort())(f.get_subexpr(v, d)); });
+    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_dia(f.get_subexpr(v, d)); });
+    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_box(f.get_subexpr(v, d)); });
     v.emplace_back(5, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
         if (!v.empty() && f.m_new_var_gen(f.m_mt)) {
             return v[(f.m_general_gen(f.m_mt) % v.size())](); 
@@ -50,7 +50,7 @@ unsigned random_formula::sum_cases() {
     return total;
 }
 
-random_formula::random_formula(context & ctx, unsigned seed) : 
+random_formula::random_formula(context & ctx, unsigned seed, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder) :
     m_ctx(ctx), m_last_seed(seed), m_current_seed(seed),
     m_cases(create_cases(this)),
     m_mt(seed),
@@ -58,7 +58,9 @@ random_formula::random_formula(context & ctx, unsigned seed) :
     m_expr_gen(0, sum_cases() - 1),
     m_arg_cnt_gen(1, 3), // Mean: 3
     m_new_var_gen(0.5),
-    m_max_depth(6) { } 
+    m_max_depth(6),
+    m_world_sort(world_sort), m_relation_sort(relation_sort),
+    m_dia(dia), m_box(box), m_placeholder(placeholder) {}
 
 void random_formula::init_generator() {
     m_mt = std::mt19937(m_current_seed);

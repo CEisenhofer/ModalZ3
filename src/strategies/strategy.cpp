@@ -1,16 +1,21 @@
 #include "assertion.h"
 #include "logging.h"
 #include "strategy.h"
+#include "parse_exception.h"
 
 bool strategy::is_modal(const func_decl& decl) const {
-    return decl.arity() == 1 && decl.domain(0).is_bool() && (decl.name().str() == "dia" || decl.name().str() == "box");
+    return eq(decl, m_box_decl) || eq(decl, m_dia_decl);
 }
 
-strategy::strategy(context& ctx) : m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown) { }
+strategy::strategy(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const expr& placeholder) :
+    m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown),
+    m_world_sort(world_sort), m_reachability_sort(reachability_sort),
+    m_dia_decl(dia), m_box_decl(box), m_placeholder(placeholder), m_uf_list(ctx), m_relation_list(ctx) {}
+
 
 expr strategy::simplify_formula(const expr& e) {
     std::stack<expr_info> expr_to_process;
-    expr_to_process.push({ e });
+    expr_to_process.push(expr_info(e));
     SASSERT(m_processed_args.empty());
     SASSERT(m_apply_list.empty());
     m_processed_args.push({});
@@ -85,12 +90,14 @@ bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& cu
     }
     
     if (is_modal(e.decl())) {
+        if (!current.e.arg(0).is_const())
+            throw parse_exception("The relation in " + current.e.to_string() + " has to be a constant");
         // Transform to box-only form by duality (for simplicity)
-        if (e.decl().name().str() == "dia") {
-            expr_to_process.push(expr_info(!m_ctx.function("box", m_ctx.bool_sort(), m_ctx.bool_sort())(!current.e.arg(0))));
+        if (eq(e.decl(), m_dia_decl)) {
+            expr_to_process.push(expr_info(!m_box_decl(current.e.arg(0), !current.e.arg(1))));
             return false;
         }
-        expr_to_process.push(expr_info(current.e.arg(0)));
+        add_to_process();
         return true;
     }
     
@@ -181,7 +188,7 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
         return true;
     }
     if (is_modal(current.decl)) {
-        SASSERT(current.decl.name().str() == "box");
+        SASSERT(eq(current.decl, m_box_decl));
         if (args[0].is_true()) {
             m_processed_args.top().push_back(current.e.ctx().bool_val(true));
             return false;
@@ -199,13 +206,11 @@ expr strategy::simplify(const expr& e) {
 
 check_result strategy::check(expr e) {
     LOG("Raw input:\n" << e << "\n");
-    e = simplify_formula(e);
+    e = simplify_formula(e); // we need to call this to collect uf/relation information [maybe separate later]
     LOG("\nProcessed:\n" << e << "\n");
     e = create_formula(e);
     LOG("Adding: " << e);
-    m_solver.add(e);
-    m_last_result = m_solver.check();
-    return m_last_result;
+    return m_last_result = solve(e);
 }
 
 void strategy::output_state(std::ostream& ostream) {

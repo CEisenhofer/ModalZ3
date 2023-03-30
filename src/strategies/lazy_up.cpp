@@ -1,5 +1,6 @@
 #include <algorithm>
 #include "lazy_up.h"
+#include "parse_exception.h"
 
 void assignment_undo::undo() {
     m_world->unassign(m_var);
@@ -85,18 +86,34 @@ expr lazy_up::create_formula(const expr& e) {
             LOG("Parsing (2): " << current.e);
 
             if (is_modal(current.decl)) {
-                SASSERT(current.decl.name().str() == "box");
+                SASSERT(z3::eq(current.decl, m_box_decl));
                 syntax_tree_node* existing;
                 if ((existing = current.world->get_child(current.e)) == nullptr) {
-                    syntax_tree_node* new_node = m_syntax_tree->create_node(current.world, 0 /* TODO */, current.e);
+
+                    unsigned relation_id;
+                    expr relation = current.e.arg(0);
+                    if (!relation.is_const())
+                        throw parse_exception("Relations have to be constants unlike " + relation.to_string());
+                    if (!m_relation_to_id.contains(relation.decl())) {
+                        relation_id = m_relation_to_id.size();
+                        m_relation_to_id[relation.decl()] = relation_id;
+                        m_relation_list.push_back(relation.decl());
+                    }
+                    else {
+                        relation_id = m_relation_to_id[relation.decl()];
+                    }
+
+                    syntax_tree_node* new_node = m_syntax_tree->create_node(current.world, relation_id, current.e);
                     SASSERT(!m_uf_to_id.contains(new_node->get_aux().decl()));
                     m_uf_to_id[new_node->get_aux().decl()] = m_uf_to_id.size();
                     LOG("Adding: " << new_node->get_aux().decl().name().str());
 
                     current.world = new_node;
                     LOG("New potential world: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));
-                    current.e = current.e.arg(0);
+                    current.e = current.e.arg(1);
                     current.decl = current.e.decl();
+                    current.arity = current.e.num_args();
+                    LOG("Pushing: " << current.e.to_string());
                     modals_to_process.push(current);
                 }
                 else
@@ -128,13 +145,19 @@ expr lazy_up::create_formula(const expr& e) {
                 }
                 m_processed_args.pop();
 
-                if (app.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
+                if (app.decl.decl_kind() == Z3_OP_UNINTERPRETED && !z3::eq(app.decl.range(), m_world_sort) && !z3::eq(app.decl.range(), m_reachability_sort)) {
                     // for now: always flexible interpretation
                     sort_vector domain(m_ctx);
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
-                    domain.push_back(m_world_sort);
-                    args.push_back(z3::expr(ctx(), Z3_mk_bound(ctx(), 0, get_world_sort())));
+                    //domain.push_back(m_world_sort);
+                    if (!args.empty() && z3::eq(args[0].get_sort(), m_world_sort)) {
+                        if (!z3::eq(args[0], m_placeholder))
+                            throw parse_exception("Currently not supporting ABox/complex world terms: " + args.to_string());
+                        //args.push_back(z3::expr(ctx(), Z3_mk_bound(ctx(), 0, get_world_sort())));
+                        auto ast = (z3::ast)z3::expr(ctx(), Z3_mk_bound(ctx(), 0, get_world_sort()));
+                        args.set(0, ast); // replace by placeholder
+                    }
                     bool is_up = app.decl.range().is_bool() || app.decl.range().is_bv();
                     func_decl new_func = is_up
                             ? m_ctx.user_propagate_function(app.decl.name(), domain, app.decl.range())
@@ -154,7 +177,9 @@ expr lazy_up::create_formula(const expr& e) {
             }
         }
 
-        info.world->set_template(m_processed_args.top().back());
+        expr t = m_processed_args.top().back();
+        LOG("Before: " << info.world->to_string());
+        info.world->set_template(t);
         LOG("Generated: " << info.world->to_string() << " with aux: " << info.world->aux_to_string());
 
         VERIFY(m_processed_args.size() == 1);
@@ -238,7 +263,7 @@ void lazy_up::created(const expr& e) {
 void lazy_up::output_model(const model& model, std::ostream& ostream) {
 
     unsigned ri = 0;
-    for (const auto& r : m_relation) {
+    for (const auto& r : m_relation_list) {
         ostream << "Relation " << r.name().str() << ":\n";
         for (modal_tree_node* n : m_modal_tree->get_worlds()) {
             if (n->get_child_relations_cnt() <= ri)

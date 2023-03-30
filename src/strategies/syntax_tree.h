@@ -5,6 +5,7 @@
 #include <z3++.h>
 
 #include "assertion.h"
+#include "logging.h"
     
 struct expr_hash {
     size_t operator()(const z3::expr& e) const {
@@ -89,18 +90,18 @@ public:
     std::string aux_to_string() const;
 };
 
-class modal_to_euf_base;
+class strategy;
 
 class syntax_tree {
     
     std::vector<syntax_tree_node*> m_nodes;
-    modal_to_euf_base* const m_base;
+    strategy* const m_base;
     syntax_tree_node* const m_root;
     std::unordered_map<z3::func_decl, syntax_tree_node*, func_decl_hash, func_decl_eq> m_func_to_abs;
 
 public:
     
-    syntax_tree(modal_to_euf_base* base);
+    syntax_tree(strategy* base);
     
     syntax_tree_node* get_root() const;
 

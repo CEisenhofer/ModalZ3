@@ -11,7 +11,7 @@ struct expr_info {
     
     syntax_tree_node* world;
     
-    expr_info(const expr& e) :
+    explicit expr_info(const expr& e) :
         e(e),
         decl(e.decl()),
         arity(e.num_args()),

@@ -8,6 +8,6 @@ add_executable(test
 target_link_libraries(test PRIVATE ast)
 #target_link_libraries(test PRIVATE utils)
 
-include_directories("../ast")
+include_directories("../strategies")
 include_directories("../utils")
 target_link_libraries(test PRIVATE ${Z3_LIBRARIES})

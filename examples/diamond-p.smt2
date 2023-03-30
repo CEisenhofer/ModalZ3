@@ -1,2 +1,4 @@
+(declare-const r1 Relation)
 (declare-fun p (World) Bool)
-(assert (dia (p world)))
+
+(assert (dia r1 (p world)))

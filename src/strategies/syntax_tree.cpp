@@ -30,7 +30,7 @@ z3::expr syntax_tree_node::initialize(const z3::expr & world, bool positive) con
     return get_template(positive).substitute(arg);
 }
 
-syntax_tree::syntax_tree(modal_to_euf_base *base) :
+syntax_tree::syntax_tree(strategy *base) :
     m_base(base), m_root(new syntax_tree_node(0, nullptr, -1, z3::expr(base->ctx()))) {
     m_nodes.push_back(m_root);
 }

@@ -1,9 +1,9 @@
 #include <stack>
 
-#include "modal_to_qeuf.h"
+#include "standard_translation.h"
 #include "assertion.h"
 
-expr modal_to_qeuf::get_world(unsigned id) {
+expr standard_translation::get_world(unsigned id) {
     if (id < m_world_variables.size()) 
         return m_world_variables[id];
     else {
@@ -13,11 +13,10 @@ expr modal_to_qeuf::get_world(unsigned id) {
     }
 }
 
-modal_to_qeuf::modal_to_qeuf(context& ctx) : 
-        modal_to_euf_base(ctx),
-        m_world_variables(ctx) { }
+standard_translation::standard_translation(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const expr& placeholder) :
+            strategy(ctx, world_sort, reachability_sort, dia, box, placeholder), m_world_variables(ctx), m_relation_predicates(ctx) {}
 
-expr modal_to_qeuf::create_formula(const expr& e) {
+expr standard_translation::create_formula(const expr& e) {
     std::stack<expr_info> expr_to_process;
     expr_info info(e);
     expr_to_process.push(info);
@@ -56,11 +55,11 @@ expr modal_to_qeuf::create_formula(const expr& e) {
 
             if (current.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
                 if (is_modal(current.decl)) { // Modal operator
-                    SASSERT(current.decl.name().str() == "box");
+                    SASSERT(eq(current.decl, m_box_decl));
                     SASSERT(current.world->get_parent());
                     expr oldW = get_world(current.world->get_parent()->get_id());
                     expr newW = get_world(current.world->get_id());
-                    m_processed_args.top().push_back(z3::forall(newW, implies(m_relation[0](oldW, newW), args[0])));
+                    m_processed_args.top().push_back(z3::forall(newW, implies(m_relation_predicates[0](oldW, newW), args[0])));
                 }
                 else { // we attach the world sort
                     sort_vector domain(m_ctx);
@@ -95,9 +94,9 @@ expr modal_to_qeuf::create_formula(const expr& e) {
     return ret;
 }
 
-void modal_to_qeuf::output_model(const model& model, std::ostream& ostream) {
+void standard_translation::output_model(const model& model, std::ostream& ostream) {
     expr_vector domain = expr_vector(m_ctx, Z3_model_get_sort_universe(m_ctx, model, m_world_sort));
-    for (const auto& r : m_relation) {
+    for (const auto& r : m_relation_predicates) {
         ostream << "Relation " << r.name().str() << ":\n";
         unsigned w1i = 1; 
         for (const auto& w1 : domain) {

@@ -1,5 +1,5 @@
 #pragma once
-#include "modal_to_euf_base.h"
+#include "strategy.h"
 
 class lazy_up;
 
@@ -58,7 +58,7 @@ public:
 };
 
 
-class lazy_up : public modal_to_euf_base, user_propagator_base {
+class lazy_up : public strategy, user_propagator_base {
 
     friend class assignment_undo;
     using user_propagator_base::ctx;
@@ -74,7 +74,9 @@ class lazy_up : public modal_to_euf_base, user_propagator_base {
 
 public:
 
-    explicit lazy_up(context& ctx) : modal_to_euf_base(ctx), user_propagator_base(&m_solver) {
+    explicit lazy_up(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const expr& placeholder) :
+        strategy(ctx, world_sort, reachability_sort, dia, box, placeholder), user_propagator_base(&m_solver) {
+
         register_fixed();
         register_final();
         register_created();

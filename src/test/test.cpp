@@ -1,13 +1,24 @@
 #include <iostream>
 
-#include "modal_to_qeuf.h"
+#include "standard_translation.h"
 #include "random_formula.h"
+#include "lazy_up.h"
 
 constexpr unsigned RANDOM_FORMULAS = 1000;
 
 void test() {
     context ctx;
-    random_formula rf(ctx);
+
+    z3::sort world_sort = ctx.uninterpreted_sort("World");
+    z3::sort relation_sort = ctx.uninterpreted_sort("Relation");
+    z3::expr placeholder = ctx.constant("world", world_sort);
+    z3::sort_vector domain(ctx);
+    domain.push_back(relation_sort);
+    domain.push_back(ctx.bool_sort());
+    z3::func_decl dia = ctx.function("dia", domain, ctx.bool_sort());
+    z3::func_decl box = ctx.function("box", domain, ctx.bool_sort());
+
+    random_formula rf(ctx, world_sort, relation_sort, dia, box, placeholder);
     rf.set_max_depth(6);
     
 #if 0
@@ -44,36 +55,36 @@ void test() {
             std::cout << "Iteration " << i << std::endl; 
         expr e = rf.get();
         
-        modal_to_qeuf std_translation(ctx);
+        standard_translation std_translation(ctx, world_sort, relation_sort, dia, box, placeholder);
         check_result result_std_translation = std_translation.check(e);
         
-        /*modal_to_qeuf euf_translation(ctx); // rather get the UP done first; this is a (probably unnecessary) special case of calling UP final before starting the real solving
-        check_result result_euf_translation = euf_translation.check(e);*/
-        check_result result_euf_translation = result_std_translation;
-        
+        /*check_result result_euf_translation = euf_translation.check(e);  // rather get the UP done first; this is a (probably unnecessary) special case of calling UP final before starting the real solving
+        check_result result_euf_translation = result_std_translation;*/
+
+        lazy_up lazy_up(ctx, world_sort, relation_sort, dia, box, placeholder);
+        check_result result_lazy_up = lazy_up.check(e);
+
         if (result_std_translation == z3::unknown) {
             std::cerr << "Seed: " << rf.get_last_seed() << ":\n";
-            std::cerr << "std-translation unknown " << e << std::endl;
+            std::cerr << "std-translation unknown: " << e << std::endl;
             exit(-1);
         }
         
-        if (result_euf_translation == z3::unknown) {
+        if (result_lazy_up == z3::unknown) {
             std::cerr << "Seed: " << rf.get_last_seed() << ":\n";
-            std::cerr << "euf-translation unknown " << e << std::endl;
+            std::cerr << "lazy-up unknown: " << e << std::endl;
             exit(-1);
         }
         
-        if (result_std_translation != result_euf_translation) {
+        if (result_std_translation != result_lazy_up) {
             std::cerr << "Seed: " << rf.get_last_seed() << ":\n";
-            std::cerr << "Different results: std vs euf " << e << std::endl;
+            std::cerr << "Different results: std (" << result_std_translation << ") vs lazy-up (" << result_lazy_up << "): " << e << std::endl;
             exit(-1);
         }
     }
 }
 
 int main() {
-
     test();
-    
     return 0;
 }
