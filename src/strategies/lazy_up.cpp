@@ -178,7 +178,6 @@ expr lazy_up::create_formula(const expr& e) {
         }
 
         expr t = m_processed_args.top().back();
-        LOG("Before: " << info.world->to_string());
         info.world->set_template(t);
         LOG("Generated: " << info.world->to_string() << " with aux: " << info.world->aux_to_string());
 

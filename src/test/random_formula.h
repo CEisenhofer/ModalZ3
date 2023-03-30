@@ -22,6 +22,8 @@ class random_formula {
     const z3::func_decl m_dia, m_box;
     const z3::expr m_placeholder;
     
+    expr_vector m_relations;
+    
     unsigned m_max_depth;
     
     decltype(m_cases) create_cases(random_formula* f);
@@ -33,8 +35,8 @@ class random_formula {
     
 public:
     
-    random_formula(context& ctx, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder) : random_formula(ctx, (unsigned)time(nullptr), world_sort, relation_sort, dia, box, placeholder) {}
-    random_formula(context& ctx, unsigned seed, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder);
+    random_formula(context& ctx, unsigned relation_cnt, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder) : random_formula(ctx, (unsigned)time(nullptr), relation_cnt, world_sort, relation_sort, dia, box, placeholder) {}
+    random_formula(context& ctx, unsigned seed, unsigned relation_cnt, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder);
     
     void set_max_depth(unsigned max) {
         m_max_depth = max;
