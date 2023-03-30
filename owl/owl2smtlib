@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+
+import owlready2 as owl
+
+def translate_class(klass):
+    if isinstance(klass, owl.EntityClass):
+        # owl.Thing is assumed to always be true
+        if klass.name == 'Thing':
+            return 'true'
+        return f"({klass.name} world)"
+    elif isinstance(klass, owl.Not):
+        negated = translate_class(klass.Class)
+        return f"(not {negated})"
+    elif isinstance(klass, owl.Or):
+        disjunction = ' '.join(translate_class(klass) for klass in klass.Classes)
+        return f"(or {disjunction})"
+    elif isinstance(klass, owl.And):
+        conjunction = ' '.join(translate_class(klass) for klass in klass.Classes)
+        return f"(and {conjunction})"
+    elif isinstance(klass, owl.Restriction):
+        if klass.type == owl.SOME:
+            reachable = translate_class(klass.value)
+            return f"(dia {klass.property.name} {reachable}))"
+        elif klass.type == owl.ONLY:
+            reachable = translate_class(klass.value)
+            return f"(box {klass.property.name} {reachable}))"
+        elif klass.type == owl.VALUE:
+            return f"(reachable {klass.property.name} world {klass.value.name})"
+        # assume we always satisfy minimum constraints for now
+        elif klass.type == owl.MIN:
+            return f"true"
+        else:
+            print(klass)
+            assert False
+    elif isinstance(klass, owl.OneOf):
+        disjunction = ' '.join(f"(= world {instance})" for instance in klass.instances)
+        return f"(or {disjunction})"
+    else:
+        print(klass)
+        assert False
+
+def translate_class_implication(left, right):
+    if isinstance(left, owl.EntityClass):
+        right = translate_class(right)
+        # trivial implication, usually owl.Thing
+        if right == "true":
+            return
+        print(f"(assert (global ({left.name} world) {right}))")
+    elif isinstance(left, owl.Or):
+        for klass in left.Classes:
+            translate_class_implication(klass, right)
+    else:
+        # give up, have to translate as (global true F)
+        left = translate_class(left)
+        right = translate_class(right)
+        print(f"(assert (global true (=> {left} {right})))")
+
+if __name__ == '__main__':
+    import sys
+    path = sys.argv[1]
+    ontology = owl.get_ontology(path)
+    ontology.load()
+
+    print("; individual declarations")
+    for individual in ontology.individuals():
+        print(f"(declare-const {individual.name} World)")
+    print()
+
+    print("; class declarations")
+    for klass in ontology.classes():
+        print(f"(declare-fun {klass.name} (World) Bool)")
+    print()
+
+    print("; property declarations")
+    for property in ontology.properties():
+        print(f"(declare-const {property.name} Relation)")
+    print()
+
+    print("; different individuals")
+    for disjoint in ontology.different_individuals():
+        names = ' '.join(entity.name for entity in disjoint.entities)
+        print(f"(assert (distinct {names}))")
+    print()
+
+    print("; class instances")
+    for klass in ontology.classes():
+        for instance in klass.instances():
+            print(f"(assert ({klass.name} {instance.name}))")
+    print()
+
+    print("; disjoint classes")
+    for disjoint in ontology.disjoint_classes():
+        classes = disjoint.entities
+        for klass in classes:
+            for other in classes:
+                if klass == other:
+                    continue
+                print(f"(assert (global ({klass.name} world) (not ({other.name} world))))")
+    print()
+
+    print("; class properties")
+    for klass in ontology.classes():
+        for property in klass.is_a:
+            translate_class_implication(klass, property)
+        for property in klass.equivalent_to:
+            translate_class_implication(klass, property)
+            translate_class_implication(property, klass)
+
+    # TODO: property instances and disjointness
