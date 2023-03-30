@@ -211,8 +211,8 @@ public:
     void remove_last_child(unsigned relation) {
         // TODO: Or better keep the entry and just disable it?
         SASSERT(m_nodes.size() > 1);
-        m_expr_to_node.erase(m_nodes.back()->last_child(relation)->world_constant());
-        m_nodes.back()->remove_and_delete_last_child(relation);
+        m_expr_to_node.erase(m_nodes.back()->world_constant());
+        m_nodes.back()->get_parent()->remove_and_delete_last_child(relation);
         m_nodes.pop_back();
     }
     

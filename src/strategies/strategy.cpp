@@ -189,7 +189,7 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
     }
     if (is_modal(current.decl)) {
         SASSERT(eq(current.decl, m_box_decl));
-        if (args[0].is_true()) {
+        if (args[1].is_true()) {
             m_processed_args.top().push_back(current.e.ctx().bool_val(true));
             return false;
         }
@@ -207,7 +207,7 @@ expr strategy::simplify(const expr& e) {
 check_result strategy::check(expr e) {
     LOG("Raw input:\n" << e << "\n");
     e = simplify_formula(e); // we need to call this to collect uf/relation information [maybe separate later]
-    LOG("\nProcessed:\n" << e << "\n");
+    LOG2("\nProcessed:\n" << e << "\n");
     e = create_formula(e);
     LOG("Adding: " << e);
     return m_last_result = solve(e);

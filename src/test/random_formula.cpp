@@ -67,7 +67,7 @@ random_formula::random_formula(context& ctx, unsigned seed, unsigned relation_cn
     
     SASSERT(relation_cnt > 0);
     for (unsigned i = 0; i < relation_cnt; i++) {
-        m_relations.push_back(ctx.constant(("relation" + std::to_string(i + 1)).c_str(), relation_sort));
+        m_relations.push_back(ctx.constant(("r" + std::to_string(i + 1)).c_str(), relation_sort));
     }
 }
 

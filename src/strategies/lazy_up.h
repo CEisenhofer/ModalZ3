@@ -63,7 +63,7 @@ class lazy_up : public strategy, user_propagator_base {
     friend class assignment_undo;
     using user_propagator_base::ctx;
 
-    std::stack<unsigned> m_trail_sz;
+    std::vector<unsigned> m_trail_sz;
     std::stack<undo_trail*> m_trail;
     std::stack<init_info> m_to_init; // delay world generation to final
 

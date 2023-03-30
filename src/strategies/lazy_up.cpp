@@ -197,11 +197,14 @@ expr lazy_up::create_formula(const expr& e) {
 }
 
 void lazy_up::push() {
-    m_trail_sz.push(m_trail.size());
+    m_trail_sz.push_back(m_trail.size());
 }
 
 void lazy_up::pop(unsigned num_scopes) {
-    for (int i = 0; i < num_scopes; i++) {
+    SASSERT(m_trail_sz.size() >= num_scopes);
+    unsigned old_sz = m_trail_sz[m_trail_sz.size() - num_scopes];
+    m_trail_sz.resize(m_trail_sz.size() - num_scopes);
+    while (m_trail.size() > old_sz) {
         undo_trail* trail = m_trail.top();
         m_trail.pop();
         trail->undo();
@@ -224,6 +227,7 @@ void lazy_up::fixed(const expr& e, const expr& value) {
 
     syntax_tree_node* abs = m_syntax_tree->get_node(func);
     if (abs) { // Modal operator; otw. just ordinary predicate
+        m_trail.push(new added_init_info_undo(m_to_init));
         m_to_init.push(init_info(abs, world, e, v));
     }
 }
