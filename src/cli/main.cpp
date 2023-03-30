@@ -33,6 +33,11 @@ int main(int argc, char **argv) {
     domain.push_back(ctx.bool_sort());
     z3::func_decl dia = ctx.function("dia", domain, ctx.bool_sort());
     z3::func_decl box = ctx.function("box", domain, ctx.bool_sort());
+    
+    domain.pop_back();
+    domain.push_back(world_sort);
+    domain.push_back(world_sort);
+    z3::func_decl reachable = ctx.function("reachable", domain, ctx.bool_sort());
 
     z3::sort_vector sorts(ctx);
     sorts.push_back(world_sort);
@@ -43,9 +48,9 @@ int main(int argc, char **argv) {
     functions.push_back(placeholder);
     z3::expr_vector parsed = ctx.parse_file(benchmark, sorts, functions);
 
-    auto id  = [&world_sort, &relation_sort, &dia, &box, &placeholder](z3::context& ctx) { return new iterative_deepening(ctx, world_sort, relation_sort, dia, box, placeholder()); };
-    auto std = [&world_sort, &relation_sort, &dia, &box, &placeholder](z3::context& ctx) { return new standard_translation(ctx, world_sort, relation_sort, dia, box, placeholder()); };
-    auto upl = [&world_sort, &relation_sort, &dia, &box, &placeholder](z3::context& ctx) { return new lazy_up(ctx, world_sort, relation_sort, dia, box, placeholder()); };
+    auto id  = [&world_sort, &relation_sort, &dia, &box, &reachable, &placeholder](z3::context& ctx) { return new iterative_deepening(ctx, world_sort, relation_sort, dia, box, reachable, placeholder()); };
+    auto std = [&world_sort, &relation_sort, &dia, &box, &reachable, &placeholder](z3::context& ctx) { return new standard_translation(ctx, world_sort, relation_sort, dia, box, reachable, placeholder()); };
+    auto upl = [&world_sort, &relation_sort, &dia, &box, &reachable, &placeholder](z3::context& ctx) { return new lazy_up(ctx, world_sort, relation_sort, dia, box, reachable, placeholder()); };
 
     std::unordered_map<std::string_view, std::function<strategy*(z3::context&)>> mapping =
     {
@@ -63,21 +68,7 @@ int main(int argc, char **argv) {
     strategy* str = it->second(ctx);
     str->check(z3::mk_and(parsed));
     str->output_state(std::cout);
-    /*
-    context ctx;
-    const expr p = ctx.bool_const("P");
-    const expr q = ctx.bool_const("Q");
-    const func_decl box = ctx.function("box", ctx.bool_sort(), ctx.bool_sort());
-    const func_decl diamond = ctx.function("dia", ctx.bool_sort(), ctx.bool_sort());
-    expr e =  diamond(p) && diamond(!p) && box(diamond(diamond(q)));
-    //modal_to_qeuf transformer(ctx);
-    //modal_to_euf transformer(ctx);
-
-    e = diamond(p);
-    lazy_up transformer(ctx);
-    transformer.check(e);
-    transformer.output_state(std::cout);
-    */
-
+    delete str;
+    
     return 0;
 }

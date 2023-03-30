@@ -17,6 +17,11 @@ void test() {
     domain.push_back(ctx.bool_sort());
     z3::func_decl dia = ctx.function("dia", domain, ctx.bool_sort());
     z3::func_decl box = ctx.function("box", domain, ctx.bool_sort());
+    
+    domain.pop_back();
+    domain.push_back(world_sort);
+    domain.push_back(world_sort);
+    z3::func_decl reachable = ctx.function("reachable", domain, ctx.bool_sort());
 
     random_formula rf(ctx, world_sort, relation_sort, dia, box, placeholder);
     rf.set_max_depth(6);
@@ -55,13 +60,10 @@ void test() {
             std::cout << "Iteration " << i << std::endl; 
         expr e = rf.get();
         
-        standard_translation std_translation(ctx, world_sort, relation_sort, dia, box, placeholder);
+        standard_translation std_translation(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
         check_result result_std_translation = std_translation.check(e);
         
-        /*check_result result_euf_translation = euf_translation.check(e);  // rather get the UP done first; this is a (probably unnecessary) special case of calling UP final before starting the real solving
-        check_result result_euf_translation = result_std_translation;*/
-
-        lazy_up lazy_up(ctx, world_sort, relation_sort, dia, box, placeholder);
+        lazy_up lazy_up(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
         check_result result_lazy_up = lazy_up.check(e);
 
         if (result_std_translation == z3::unknown) {

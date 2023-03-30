@@ -1,0 +1,5 @@
+(declare-const r1 Relation)
+(declare-const r2 Relation)
+(declare-fun p (World) Bool)
+(assert (box r1 (not (p world))))
+(assert (dia r2 (p world)))

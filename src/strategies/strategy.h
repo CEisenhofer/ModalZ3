@@ -28,6 +28,7 @@ protected:
     const sort m_reachability_sort;
     const func_decl m_box_decl;
     const func_decl m_dia_decl;
+    const func_decl m_reachable_decl;
     const expr m_placeholder;
 
     func_decl_vector m_uf_list;
@@ -39,7 +40,7 @@ protected:
 
     bool is_modal(const func_decl& decl) const;
     
-    explicit strategy(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const expr& placeholder);
+    explicit strategy(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder);
     
     virtual bool is_blast_eq() const { return false; }
     virtual bool is_nnf() const { return false; } // TODO: Implement in simplify

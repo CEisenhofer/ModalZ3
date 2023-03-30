@@ -5,8 +5,9 @@ check_result iterative_deepening::solve(const expr& e) {
     expr x = fresh_world_constant();
     expr world = fresh_world_constant();
     expr constraint = world == x;
+    m_solver.add(e);
 
-    for (unsigned num_worlds = 2;; num_worlds++) {
+    for (unsigned num_worlds = 1;; num_worlds++) {
         LOG("Trying size " << num_worlds << "...");
         expr_vector assumptions(ctx());
         assumptions.push_back(forall(x, constraint));

@@ -7,10 +7,10 @@ bool strategy::is_modal(const func_decl& decl) const {
     return eq(decl, m_box_decl) || eq(decl, m_dia_decl);
 }
 
-strategy::strategy(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const expr& placeholder) :
+strategy::strategy(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder) :
     m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown),
     m_world_sort(world_sort), m_reachability_sort(reachability_sort),
-    m_dia_decl(dia), m_box_decl(box), m_placeholder(placeholder), m_uf_list(ctx), m_relation_list(ctx) {}
+    m_dia_decl(dia), m_box_decl(box), m_reachable_decl(reachable), m_placeholder(placeholder), m_uf_list(ctx), m_relation_list(ctx) {}
 
 
 expr strategy::simplify_formula(const expr& e) {
