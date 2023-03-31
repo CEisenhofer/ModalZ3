@@ -5,7 +5,7 @@ import owlready2 as owl
 def translate_class(klass):
     if isinstance(klass, owl.EntityClass):
         # owl.Thing is assumed to always be true
-        if klass.name == 'Thing':
+        if klass.namespace.name == 'owl' and klass.name == 'Thing':
             return 'true'
         return f"({klass.name} world)"
     elif isinstance(klass, owl.Not):
@@ -26,8 +26,8 @@ def translate_class(klass):
             return f"(box {klass.property.name} {reachable}))"
         elif klass.type == owl.VALUE:
             return f"(reachable {klass.property.name} world {klass.value.name})"
-        # assume we always satisfy minimum constraints for now
-        elif klass.type == owl.MIN:
+        # TODO counting constraints
+        elif klass.type == owl.MIN or klass.type == owl.EXACTLY or klass.type == owl.MAX:
             return f"true"
         else:
             print(klass)
@@ -105,5 +105,24 @@ if __name__ == '__main__':
         for property in klass.equivalent_to:
             translate_class_implication(klass, property)
             translate_class_implication(property, klass)
+    print()
 
-    # TODO: property instances and disjointness
+    print("; property properties")
+    for property in ontology.properties():
+        # TODO compound domain/range constraints
+        if property.domain and len(property.domain) == 1 and isinstance(property.domain[0], owl.EntityClass):
+            domain = property.domain[0]
+            print(f"(assert (global (not ({domain.name} world)) (not (dia {property.name} true))))")
+        if property.range and len(property.range) == 1 and isinstance(property.range[0], owl.EntityClass):
+            range = property.range[0]
+            print(f"(assert (global true (box {property.name} ({range.name} world))))")
+
+        if property.inverse_property:
+            print(f"(assert (inverse {property.name} {property.inverse_property.name}))")
+
+        # TODO functional properties
+        # TODO transitive properties
+        for subject, object in property.get_relations():
+            if isinstance(type(subject), owl.EntityClass) and isinstance(type(object), owl.EntityClass):
+                print(f"(assert (reachable {property.name} {subject.name} {object.name}))")
+            # TODO metadata
