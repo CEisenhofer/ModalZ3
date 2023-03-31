@@ -61,8 +61,18 @@ void test() {
         for (unsigned i = 0; i < RANDOM_FORMULAS; i++) {
             if (i % 100 == 0) 
                 std::cout << "Iteration " << i << std::endl; 
+            rep:
             expr e = rf.get();
-            
+            {
+                standard_translation simplifier(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
+                e = simplifier.simplify(e);
+
+                if (e.to_string().length() < 20
+                || e.to_string().length() > 100
+                )
+                    goto rep;
+            }
+
             standard_translation std_translation(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
             check_result result_std_translation = std_translation.check(e);
             

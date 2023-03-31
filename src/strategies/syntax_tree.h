@@ -64,6 +64,10 @@ public:
 
     z3::expr get_template(bool pos) const;
 
+    bool is_template_false() const {
+        return m_template.is_false();
+    }
+
     z3::expr get_aux() const {
         return m_aux;
     }

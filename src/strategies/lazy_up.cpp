@@ -243,11 +243,16 @@ void lazy_up::final() {
         if (!to_init.m_positive) {
             modal_tree_node* new_world = m_modal_tree->create_node(to_init.m_template, to_init.m_parent, relation, to_init.m_justification);
             m_trail.push(new create_world_undo(m_modal_tree, relation));
-            z3::expr inst = to_init.m_template->initialize(new_world->world_constant(), false);
-            z3::expr_vector just(ctx());
-            just.push_back(to_init.m_justification); // actually negation; translated internally
-            this->propagate(just, inst);
-            LOG("Propagating (SK): " << !to_init.m_justification << " => " << inst);
+            if (to_init.m_template->is_template_false()) {
+                LOG("Propagating (SK): No propagation required; body trivial");
+            }
+            else{
+                z3::expr inst = to_init.m_template->initialize(new_world->world_constant(), false);
+                z3::expr_vector just(ctx());
+                just.push_back(to_init.m_justification); // actually negation; translated internally
+                this->propagate(just, inst);
+                LOG("Propagating (SK): " << !to_init.m_justification << " => " << inst);
+            }
             propagate_to(new_world, relation);
         }
         else {

@@ -43,7 +43,7 @@ public:
     }
     
     z3::expr aux_predicate() const {
-        SASSERT(m_aux_predicate.num_args() == 1 && eq(m_aux_predicate.arg(0), world_constant())); // for now; remove e.g., if the aux is a prop variable
+        SASSERT(m_aux_predicate.num_args() == 1 && eq(m_aux_predicate.arg(0), m_parent->world_constant())); // for now; remove e.g., if the aux is a prop variable
         return m_aux_predicate;
     }
 
