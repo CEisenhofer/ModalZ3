@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <optional>
 #include <stack>
 #include <unordered_map>
@@ -10,6 +11,20 @@
 #include "modal_tree.h"
 
 using namespace z3;
+
+struct modal_decls {
+    sort world_sort, relation_sort;
+    func_decl dia, box;
+    func_decl reachable;
+    func_decl 
+    expr placeholder;
+    
+    modal_decls(context& ctx) :
+        world_sort(ctx), relation_sort(ctx),
+        dia(ctx), box(ctx),
+        reachable(ctx), 
+        placeholder(ctx) {}
+};
 
 class strategy {
 protected:
@@ -24,12 +39,7 @@ protected:
 
     check_result m_last_result;
 
-    const sort m_world_sort;
-    const sort m_reachability_sort;
-    const func_decl m_box_decl;
-    const func_decl m_dia_decl;
-    const func_decl m_reachable_decl;
-    const expr m_placeholder;
+    const modal_decls m_decls;
 
     func_decl_vector m_uf_list;
     std::unordered_set<func_decl, func_decl_hash, func_decl_eq> m_uf_set;
@@ -37,10 +47,13 @@ protected:
 
     std::unordered_map<func_decl, unsigned, func_decl_hash, func_decl_eq> m_relation_to_id;
     func_decl_vector m_relation_list;
+    
+    bool m_is_benchmark = false;
+    std::chrono::microseconds m_solving_time;
 
     bool is_modal(const func_decl& decl) const;
     
-    explicit strategy(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder);
+    strategy(context& ctx, const modal_decls& decls);
     
     virtual bool is_blast_eq() const { return false; }
     virtual bool is_nnf() const { return false; } // TODO: Implement in simplify
@@ -54,7 +67,10 @@ protected:
     bool post_rewrite(expr_info& current, expr_vector& args);
     bool pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& current);
 
-    virtual check_result solve(const z3::expr& e) { m_solver.add(e); return m_solver.check(); }
+    virtual check_result solve(const z3::expr& e) { 
+        m_solver.add(e); 
+        return m_solver.check(); 
+    }
 
 public:
     
@@ -65,13 +81,21 @@ public:
         delete m_syntax_tree;
         delete m_modal_tree;
     }
+    
+    void set_is_benchmark(bool is_benchmark) {
+        m_is_benchmark = is_benchmark;
+    }
+    
+    std::chrono::microseconds solving_time() const {
+        return m_solving_time;
+    }
 
     const z3::sort& get_world_sort() const {
-        return m_world_sort;
+        return m_decls.world_sort;
     }
 
     z3::expr fresh_world_constant() const {
-        return { m_ctx, Z3_mk_fresh_const(m_ctx, "world", m_world_sort) };
+        return { m_ctx, Z3_mk_fresh_const(m_ctx, "world", m_decls.world_sort) };
     }
 
 

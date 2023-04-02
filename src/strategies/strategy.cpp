@@ -4,13 +4,12 @@
 #include "parse_exception.h"
 
 bool strategy::is_modal(const func_decl& decl) const {
-    return eq(decl, m_box_decl) || eq(decl, m_dia_decl);
+    return eq(decl, m_decls.box) || eq(decl, m_decls.dia);
 }
 
-strategy::strategy(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder) :
+strategy::strategy(context& ctx, const modal_decls& decls) :
     m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown),
-    m_world_sort(world_sort), m_reachability_sort(reachability_sort),
-    m_dia_decl(dia), m_box_decl(box), m_reachable_decl(reachable), m_placeholder(placeholder), m_uf_list(ctx), m_relation_list(ctx) {}
+    m_decls(decls), m_uf_list(ctx), m_relation_list(ctx) {}
 
 
 expr strategy::simplify_formula(const expr& e) {
@@ -93,8 +92,8 @@ bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& cu
         if (!current.e.arg(0).is_const())
             throw parse_exception("The relation in " + current.e.to_string() + " has to be a constant");
         // Transform to box-only form by duality (for simplicity)
-        if (eq(e.decl(), m_dia_decl)) {
-            expr_to_process.push(expr_info(!m_box_decl(current.e.arg(0), !current.e.arg(1))));
+        if (eq(e.decl(), m_decls.dia)) {
+            expr_to_process.push(expr_info(!m_decls.box(current.e.arg(0), !current.e.arg(1))));
             return false;
         }
         add_to_process();
@@ -188,7 +187,7 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
         return true;
     }
     if (is_modal(current.decl)) {
-        SASSERT(eq(current.decl, m_box_decl));
+        SASSERT(eq(current.decl, m_decls.box));
         if (args[1].is_true()) {
             m_processed_args.top().push_back(current.e.ctx().bool_val(true));
             return false;
@@ -210,7 +209,13 @@ check_result strategy::check(expr e) {
     LOG2("\nProcessed:\n" << e << "\n");
     e = create_formula(e);
     LOG("Adding: " << e);
-    return m_last_result = solve(e);
+    if (!m_is_benchmark)
+        return m_last_result = solve(e);
+    auto start = std::chrono::high_resolution_clock::now();
+    m_last_result = solve(e);
+    auto end = std::chrono::high_resolution_clock::now();
+    m_solving_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    return m_last_result;
 }
 
 void strategy::output_state(std::ostream& ostream) {

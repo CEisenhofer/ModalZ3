@@ -74,8 +74,8 @@ class lazy_up : public strategy, user_propagator_base {
 
 public:
 
-    explicit lazy_up(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder) :
-        strategy(ctx, world_sort, reachability_sort, dia, box, reachable, placeholder), user_propagator_base(&m_solver) {
+    explicit lazy_up(context& ctx, const modal_decls& decls) :
+        strategy(ctx, decls), user_propagator_base(&m_solver) {
 
         register_fixed();
         register_final();

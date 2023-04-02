@@ -86,7 +86,7 @@ expr lazy_up::create_formula(const expr& e) {
             LOG("Parsing (2): " << current.e);
 
             if (is_modal(current.decl)) {
-                SASSERT(z3::eq(current.decl, m_box_decl));
+                SASSERT(z3::eq(current.decl, m_decls.box));
                 syntax_tree_node* existing;
                 if ((existing = current.world->get_child(current.e)) == nullptr) {
 
@@ -145,17 +145,17 @@ expr lazy_up::create_formula(const expr& e) {
                 }
                 m_processed_args.pop();
 
-                if (app.decl.decl_kind() == Z3_OP_UNINTERPRETED && !z3::eq(app.decl.range(), m_world_sort) && !z3::eq(app.decl.range(), m_reachability_sort)) {
+                if (app.decl.decl_kind() == Z3_OP_UNINTERPRETED && !z3::eq(app.decl.range(), m_decls.world_sort) && !z3::eq(app.decl.range(), m_decls.relation_sort)) {
                     // for now: always flexible interpretation
                     sort_vector domain(m_ctx);
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
                     //domain.push_back(m_world_sort);
-                    if (!args.empty() && z3::eq(args[0].get_sort(), m_world_sort)) {
-                        if (!z3::eq(args[0], m_placeholder))
+                    if (!args.empty() && z3::eq(args[0].get_sort(), m_decls.world_sort)) {
+                        if (!z3::eq(args[0], m_decls.placeholder))
                             throw parse_exception("Currently not supporting ABox/complex world terms: " + args.to_string());
                         //args.push_back(z3::expr(ctx(), Z3_mk_bound(ctx(), 0, get_world_sort())));
-                        auto ast = (z3::ast)z3::expr(ctx(), Z3_mk_bound(ctx(), 0, get_world_sort()));
+                        auto ast = (z3::ast)z3::expr(ctx(), Z3_mk_bound(ctx(), 0, m_decls.world_sort));
                         args.set(0, ast); // replace by placeholder
                     }
                     bool is_up = app.decl.range().is_bool() || app.decl.range().is_bv();
@@ -219,7 +219,7 @@ void lazy_up::fixed(const expr& e, const expr& value) {
     func_decl func = e.decl();
     SASSERT(func.arity() > 0);
     expr arg = e.arg(func.arity() - 1);
-    SASSERT(z3::eq(arg.get_sort(), m_world_sort));
+    SASSERT(z3::eq(arg.get_sort(), m_decls.world_sort));
     modal_tree_node* world = m_modal_tree->get(arg);
     unsigned var = get_variable(e.decl());
     world->assign(var, v);

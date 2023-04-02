@@ -13,7 +13,7 @@ class iterative_deepening : public standard_translation {
 
 public:
 
-    iterative_deepening(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder) :
-        standard_translation(ctx, world_sort, reachability_sort, dia, box, reachable, placeholder) {}
+    iterative_deepening(context& ctx, const modal_decls& decls) :
+        standard_translation(ctx, decls) {}
 
 };

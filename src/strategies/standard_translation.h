@@ -18,7 +18,7 @@ class standard_translation : public strategy {
     
 public:
     
-    standard_translation(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder);
+    standard_translation(context& ctx, const modal_decls& decls);
 
     virtual unsigned domain_size() override;
 };

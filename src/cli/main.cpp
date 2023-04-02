@@ -5,14 +5,13 @@
 
 #include "iterative_deepening.h"
 #include "lazy_up.h"
-#include "modal_to_euf.h"
 #include "standard_translation.h"
 
 const char* HELP =
 " Mode File\n"
 "Solves a multi-modal formula\n\n"
 "Mode\t one of: std (std translation), id (iterative deepening), upl (user-propagator; lazy), upe (user-propagator; eager)\n"
-"File\t Path to an SMTLIB2 benchmark\n";
+"File\t Path to an SMTLIB2 set_is_benchmark\n";
 
 int main(int argc, char **argv) {
     if(argc != 3) {
@@ -24,33 +23,50 @@ int main(int argc, char **argv) {
     std::string_view mode(argv[1]);
     const char* benchmark = argv[2];
 
+    /*Z3_enable_trace("rewriter");
+    Z3_enable_trace("rewriter_visit");
+    Z3_enable_trace("rewriter_subst");
+    Z3_enable_trace("reduce_app");
+    Z3_enable_trace("reduce_quantifier");
+    Z3_enable_trace("rewriter_reuse");
+    Z3_enable_trace("rewriter_step");
+    Z3_enable_trace("elim_unused_vars");*/
+    
+    /*z3::set_param("sat.euf", true);
+    z3::set_param("sat.smt", true);
+    z3::config cfg;
+    cfg.set("sat.smt", true);
+    cfg.set("sat.euf", true);
+    z3::context ctx(cfg);*/
     z3::context ctx;
-    z3::sort world_sort = ctx.uninterpreted_sort("World");
-    z3::sort relation_sort = ctx.uninterpreted_sort("Relation");
+    modal_decls decls(ctx);
+    decls.world_sort = ctx.uninterpreted_sort("World");
+    decls.relation_sort = ctx.uninterpreted_sort("Relation");
     z3::sort_vector domain(ctx);
-    z3::func_decl placeholder = ctx.function("world", domain, world_sort);
-    domain.push_back(relation_sort);
+    func_decl placeholder = ctx.function("world", domain, decls.world_sort);
+    decls.placeholder = placeholder();
+    domain.push_back(decls.relation_sort);
     domain.push_back(ctx.bool_sort());
-    z3::func_decl dia = ctx.function("dia", domain, ctx.bool_sort());
-    z3::func_decl box = ctx.function("box", domain, ctx.bool_sort());
+    decls.dia = ctx.function("dia", domain, ctx.bool_sort());
+    decls.box = ctx.function("box", domain, ctx.bool_sort());
     
     domain.pop_back();
-    domain.push_back(world_sort);
-    domain.push_back(world_sort);
-    z3::func_decl reachable = ctx.function("reachable", domain, ctx.bool_sort());
+    domain.push_back(decls.world_sort);
+    domain.push_back(decls.world_sort);
+    decls.reachable = ctx.function("reachable", domain, ctx.bool_sort());
 
     z3::sort_vector sorts(ctx);
-    sorts.push_back(world_sort);
-    sorts.push_back(relation_sort);
+    sorts.push_back(decls.world_sort);
+    sorts.push_back(decls.relation_sort);
     z3::func_decl_vector functions(ctx);
-    functions.push_back(box);
-    functions.push_back(dia);
+    functions.push_back(decls.box);
+    functions.push_back(decls.dia);
     functions.push_back(placeholder);
     z3::expr_vector parsed = ctx.parse_file(benchmark, sorts, functions);
 
-    auto id  = [&world_sort, &relation_sort, &dia, &box, &reachable, &placeholder](z3::context& ctx) { return new iterative_deepening(ctx, world_sort, relation_sort, dia, box, reachable, placeholder()); };
-    auto std = [&world_sort, &relation_sort, &dia, &box, &reachable, &placeholder](z3::context& ctx) { return new standard_translation(ctx, world_sort, relation_sort, dia, box, reachable, placeholder()); };
-    auto upl = [&world_sort, &relation_sort, &dia, &box, &reachable, &placeholder](z3::context& ctx) { return new lazy_up(ctx, world_sort, relation_sort, dia, box, reachable, placeholder()); };
+    auto id  = [&decls](z3::context& ctx) { return new iterative_deepening(ctx, decls); };
+    auto std = [&decls](z3::context& ctx) { return new standard_translation(ctx, decls); };
+    auto upl = [&decls](z3::context& ctx) { return new lazy_up(ctx, decls); };
 
     std::unordered_map<std::string_view, std::function<strategy*(z3::context&)>> mapping =
     {

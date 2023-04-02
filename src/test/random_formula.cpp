@@ -28,17 +28,17 @@ decltype(random_formula::m_cases) random_formula::create_cases(random_formula* f
     });
     v.emplace_back(1, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return implies(f.get_subexpr(v, d), f.get_subexpr(v, d)); });
     v.emplace_back(3, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return !f.get_subexpr(v, d); });
-    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_dia(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
-    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_box(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
+    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.dia(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
+    v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.box(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
     v.emplace_back(5, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
         if (!v.empty() && f.m_new_var_gen(f.m_mt)) {
-            return v[(f.m_general_gen(f.m_mt) % v.size())](f.m_placeholder); 
+            return v[(f.m_general_gen(f.m_mt) % v.size())](f.m_decls.placeholder); 
         }
         else {
-            Z3_sort domain_sort = f.m_world_sort;
+            Z3_sort domain_sort = f.m_decls.world_sort;
             func_decl func(f.m_ctx, Z3_mk_fresh_func_decl(f.m_ctx, "Var", 1, &domain_sort, f.m_ctx.bool_sort()));
             v.push_back(func);
-            return func(f.m_placeholder);
+            return func(f.m_decls.placeholder);
         }
     });
 
@@ -52,7 +52,7 @@ unsigned random_formula::sum_cases() {
     return total;
 }
 
-random_formula::random_formula(context& ctx, unsigned seed, unsigned relation_cnt, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder) :
+random_formula::random_formula(context& ctx, const modal_decls& decls, unsigned seed, unsigned relation_cnt) :
     m_ctx(ctx), m_last_seed(seed), m_current_seed(seed),
     m_cases(create_cases(this)),
     m_mt(seed),
@@ -60,14 +60,14 @@ random_formula::random_formula(context& ctx, unsigned seed, unsigned relation_cn
     m_expr_gen(0, sum_cases() - 1),
     m_arg_cnt_gen(1, 3), // Mean: 3
     m_new_var_gen(0.5),
+    m_decls(decls),
     m_relations(ctx),
-    m_max_depth(6),
-    m_world_sort(world_sort), m_relation_sort(relation_sort),
-    m_dia(dia), m_box(box), m_placeholder(placeholder) {
+    m_max_depth(6)
+    {
     
     SASSERT(relation_cnt > 0);
     for (unsigned i = 0; i < relation_cnt; i++) {
-        m_relations.push_back(ctx.constant(("r" + std::to_string(i + 1)).c_str(), relation_sort));
+        m_relations.push_back(ctx.constant(("r" + std::to_string(i + 1)).c_str(), m_decls.relation_sort));
     }
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <random>
+#include "strategy.h"
 #include "z3++.h"
 
 using namespace z3;
@@ -18,9 +19,7 @@ class random_formula {
     std::uniform_int_distribution<unsigned> m_general_gen;
     std::bernoulli_distribution m_new_var_gen;
 
-    const z3::sort m_world_sort, m_relation_sort;
-    const z3::func_decl m_dia, m_box;
-    const z3::expr m_placeholder;
+    const modal_decls& m_decls;
     
     expr_vector m_relations;
     
@@ -35,8 +34,8 @@ class random_formula {
     
 public:
     
-    random_formula(context& ctx, unsigned relation_cnt, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder) : random_formula(ctx, (unsigned)time(nullptr), relation_cnt, world_sort, relation_sort, dia, box, placeholder) {}
-    random_formula(context& ctx, unsigned seed, unsigned relation_cnt, z3::sort world_sort, z3::sort relation_sort, z3::func_decl dia, z3::func_decl box, z3::expr placeholder);
+    random_formula(context& ctx, const modal_decls& decls, unsigned relation_cnt) : random_formula(ctx, decls, (unsigned)time(nullptr), relation_cnt) {}
+    random_formula(context& ctx, const modal_decls& decls, unsigned seed, unsigned relation_cnt);
     
     void set_max_depth(unsigned max) {
         m_max_depth = max;

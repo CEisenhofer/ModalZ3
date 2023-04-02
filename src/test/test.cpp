@@ -5,7 +5,7 @@
 #include "random_formula.h"
 #include "standard_translation.h"
 
-constexpr unsigned RANDOM_FORMULAS = 1000;
+constexpr unsigned RANDOM_FORMULAS = 300;
 constexpr unsigned MAX_RELATIONS = 3;
 
 unsigned cnt_str(const std::string& s, const std::string& target) {
@@ -21,25 +21,28 @@ unsigned cnt_str(const std::string& s, const std::string& target) {
 void test() {
     context ctx;
 
-    z3::sort world_sort = ctx.uninterpreted_sort("World");
-    z3::sort relation_sort = ctx.uninterpreted_sort("Relation");
-    z3::expr placeholder = ctx.constant("world", world_sort);
+    modal_decls decls(ctx);
+    decls.world_sort = ctx.uninterpreted_sort("World");
+    decls.relation_sort = ctx.uninterpreted_sort("Relation");
     z3::sort_vector domain(ctx);
-    domain.push_back(relation_sort);
+    func_decl placeholder = ctx.function("world", domain, decls.world_sort);
+    decls.placeholder = placeholder();
+    domain.push_back(decls.relation_sort);
     domain.push_back(ctx.bool_sort());
-    z3::func_decl dia = ctx.function("dia", domain, ctx.bool_sort());
-    z3::func_decl box = ctx.function("box", domain, ctx.bool_sort());
+    decls.dia = ctx.function("dia", domain, ctx.bool_sort());
+    decls.box = ctx.function("box", domain, ctx.bool_sort());
     
     domain.pop_back();
-    domain.push_back(world_sort);
-    domain.push_back(world_sort);
-    z3::func_decl reachable = ctx.function("reachable", domain, ctx.bool_sort());
+    domain.push_back(decls.world_sort);
+    domain.push_back(decls.world_sort);
+    decls.reachable = ctx.function("reachable", domain, ctx.bool_sort());
 
     //std::vector<int> world_cnt[3]; // some statistics
     unsigned world_cnt[3]; // some statistics
+    memset(world_cnt, 0, sizeof(unsigned) * 3);
 
     for (unsigned r = 1; r <= MAX_RELATIONS; r++) {
-        random_formula rf(ctx, r, world_sort, relation_sort, dia, box, placeholder);
+        random_formula rf(ctx, r, decls);
         rf.set_max_depth(6);
         
 #if 0
@@ -77,23 +80,26 @@ void test() {
             rep:
             expr e = rf.get();
             {
-                standard_translation simplifier(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
+                standard_translation simplifier(ctx, decls);
                 e = simplifier.simplify(e);
 
                 if (e.to_string().length() < 20
-                || e.to_string().length() > 500
+                //|| e.to_string().length() > 500
                 || cnt_str(e.to_string(), "box") < 2
                 )
                     goto rep;
             }
 
-            standard_translation std_translation(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
+            standard_translation std_translation(ctx, decls);
+            std_translation.set_is_benchmark(true);
             check_result result_std_translation = std_translation.check(e);
             
-            iterative_deepening iterative_deepening(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
+            iterative_deepening iterative_deepening(ctx, decls);
+            iterative_deepening.set_is_benchmark(true);
             check_result result_iterative_deepening = iterative_deepening.check(e);
             
-            lazy_up lazy_up(ctx, world_sort, relation_sort, dia, box, reachable, placeholder);
+            lazy_up lazy_up(ctx, decls);
+            lazy_up.set_is_benchmark(true);
             check_result result_lazy_up = lazy_up.check(e);
     
             if (result_std_translation == z3::unknown) {
@@ -125,6 +131,12 @@ void test() {
                 exit(-1);
             }
 
+#if 0
+            std::cout << std_translation.solving_time().count() << " STD" << std::endl;
+            std::cout << iterative_deepening.solving_time().count() << " ID" << std::endl;
+            std::cout << lazy_up.solving_time().count() << " UP" << std::endl;
+#endif
+            
             if (result_std_translation == sat) {
                 /*world_cnt[0].push_back(std_translation.domain_size());
                 world_cnt[1].push_back(iterative_deepening.domain_size());

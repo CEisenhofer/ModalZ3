@@ -4,8 +4,8 @@
 #include "assertion.h"
 #include "parse_exception.h"
 
-standard_translation::standard_translation(context& ctx, const sort& world_sort, const sort& reachability_sort, const func_decl& dia, const func_decl& box, const func_decl& reachable, const expr& placeholder) :
-            strategy(ctx, world_sort, reachability_sort, dia, box, reachable, placeholder), m_variables(ctx) {
+standard_translation::standard_translation(context& ctx, const modal_decls& decls) :
+            strategy(ctx, decls), m_variables(ctx) {
     m_variables.push_back(fresh_world_constant());
 }
 
@@ -58,12 +58,12 @@ expr standard_translation::create_formula(const expr& e) {
                         m_relation_list.push_back(relation.decl());
                     }
 
-                    SASSERT(eq(app.decl, m_box_decl));
+                    SASSERT(eq(app.decl, m_decls.box));
                     
                     expr new_world = m_variables.back();
                     m_variables.pop_back();
                     expr old_world = m_variables.back();
-                    expr forall = z3::forall(new_world, implies(m_reachable_decl(args[0], old_world, new_world), args[1]));
+                    expr forall = z3::forall(new_world, implies(m_decls.reachable(args[0], old_world, new_world), args[1]));
                     LOG("Created: " << forall);
                     m_processed_args.top().push_back(forall);
                 }
@@ -71,8 +71,8 @@ expr standard_translation::create_formula(const expr& e) {
                     sort_vector domain(m_ctx);
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
-                    if (!args.empty() && z3::eq(args[0].get_sort(), m_world_sort)) {
-                        if (!z3::eq(args[0], m_placeholder))
+                    if (!args.empty() && z3::eq(args[0].get_sort(), m_decls.world_sort)) {
+                        if (!z3::eq(args[0], m_decls.placeholder))
                             throw parse_exception("Currently not supporting ABox/complex world terms: " + args.to_string());
                         z3::expr x = m_variables.back();
                         args.set(0, x);
@@ -107,7 +107,20 @@ expr standard_translation::create_formula(const expr& e) {
 
 void standard_translation::output_model(const model& model, std::ostream& ostream) {
     // LOG("Native model: " << model);
-    expr_vector domain = expr_vector(m_ctx, Z3_model_get_sort_universe(m_ctx, model, m_world_sort));
+    Z3_ast_vector domain_native = Z3_model_get_sort_universe(m_ctx, model, m_decls.world_sort);
+    if (domain_native == nullptr) {
+        for (const auto& r : m_relation_list) {
+            ostream << "Relation " << r.name().str() << ":\n";
+        }
+        for (const auto& uf : m_uf_list) {
+            if (uf.is_const() && (eq(uf.range(), m_decls.relation_sort) || eq(uf.range(), m_decls.world_sort)))
+                continue;
+            ostream << uf.name().str().c_str() << ":\n";
+        }
+        return;
+    }
+    
+    expr_vector domain = expr_vector(m_ctx, domain_native);
     for (const auto& r : m_relation_list) {
         ostream << "Relation " << r.name().str() << ":\n";
         unsigned w1i = 0; 
@@ -117,7 +130,7 @@ void standard_translation::output_model(const model& model, std::ostream& ostrea
             unsigned output_cnt = 0;
             for (const auto& w2 : domain) {
                 w2i++;
-                if (!model.eval(m_reachable_decl(r(), w1, w2), true).is_true())
+                if (!model.eval(m_decls.reachable(r(), w1, w2), true).is_true())
                     continue;
                 output_cnt++;
                 ostream << "\tw" << w1i << " -> w" << w2i << "\n"; 
@@ -128,10 +141,10 @@ void standard_translation::output_model(const model& model, std::ostream& ostrea
     }
     
     for (const auto& uf : m_uf_list) {
-        if (uf.is_const() && (eq(uf.range(), m_reachability_sort) || eq(uf.range(), m_world_sort)))
+        if (uf.is_const() && (eq(uf.range(), m_decls.relation_sort) || eq(uf.range(), m_decls.world_sort)))
             continue;
         ostream << uf.name().str().c_str() << ":\n";
-        if (uf.arity() != 1 || !eq(uf.domain(0), m_world_sort)) {
+        if (uf.arity() != 1 || !eq(uf.domain(0), m_decls.world_sort)) {
             ostream << "\tSkipped because of complexity\n";
         }
         else {
@@ -147,10 +160,10 @@ void standard_translation::output_model(const model& model, std::ostream& ostrea
 
 unsigned standard_translation::domain_size() {
     z3::model model = m_solver.get_model();
-    Z3_ast_vector domain_native = Z3_model_get_sort_universe(m_ctx, model, m_world_sort);
-    if (domain_native == nullptr) {
-        return 0;
-    }
+    Z3_ast_vector domain_native = Z3_model_get_sort_universe(m_ctx, model, m_decls.world_sort);
+    if (domain_native == nullptr)
+        return 1; // TODO: Bug in Z3?
+        
     expr_vector domain = expr_vector(m_ctx, domain_native);
     return domain.size();
 }
