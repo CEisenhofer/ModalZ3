@@ -306,3 +306,7 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
         }
     }
 }
+
+unsigned lazy_up::domain_size(){
+    return m_modal_tree->size();
+}

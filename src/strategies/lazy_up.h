@@ -103,4 +103,6 @@ public:
     }
 
     void output_model(const model& model, std::ostream &ostream) override;
+
+    unsigned domain_size() override;
 };

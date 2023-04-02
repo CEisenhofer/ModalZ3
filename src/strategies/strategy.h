@@ -82,4 +82,6 @@ public:
     check_result check(expr e);
     
     void output_state(std::ostream& ostream);
+
+    virtual unsigned domain_size() = 0;
 };

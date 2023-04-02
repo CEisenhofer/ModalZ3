@@ -43,7 +43,7 @@ public:
     }
     
     z3::expr aux_predicate() const {
-        SASSERT(m_aux_predicate.num_args() == 1 && eq(m_aux_predicate.arg(0), m_parent->world_constant())); // for now; remove e.g., if the aux is a prop variable
+        SASSERT(m_aux_predicate.num_args() == 1 && eq(m_aux_predicate.arg(0), m_parent->world_constant()));
         return m_aux_predicate;
     }
 
@@ -178,10 +178,9 @@ public:
     }
     
     modal_tree_node* create_node(syntax_tree_node* abs, modal_tree_node* parent, unsigned relation, const z3::expr& aux_predicate) {
-        LOG("Creating: " << abs->to_string());
         z3::expr new_world = z3::expr(m_ctx, Z3_mk_fresh_const(m_ctx, "world", get_world_sort()));
         modal_tree_node* node = new modal_tree_node(m_nodes.size(), abs, parent, new_world, aux_predicate);
-        SASSERT((parent == nullptr && abs->get_parent() == nullptr) || (parent->m_abstract->get_id() == abs->get_parent()->get_id()));
+        LOG("Creating: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
         if (parent)
             parent->add_child(node, relation);
         m_nodes.push_back(node);

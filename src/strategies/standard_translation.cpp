@@ -144,3 +144,15 @@ void standard_translation::output_model(const model& model, std::ostream& ostrea
         ostream << "\n";
     }
 }
+
+unsigned standard_translation::domain_size() {
+    z3::model model = m_solver.get_model();
+    Z3_ast_vector domain_native = Z3_model_get_sort_universe(m_ctx, model, m_world_sort);
+    e = Z3_get_error_code(m_ctx);
+    if (e != Z3_OK) {
+        std::cout << "Error: " << Z3_get_error_msg(m_ctx, e) << std::endl;
+        std::cout << "Model: " << m_solver.get_model().to_string() << std::endl;
+    }
+    expr_vector domain = expr_vector(m_ctx, domain_native);
+    return domain.size();
+}

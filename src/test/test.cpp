@@ -8,6 +8,16 @@
 constexpr unsigned RANDOM_FORMULAS = 1000;
 constexpr unsigned MAX_RELATIONS = 3;
 
+unsigned cnt_str(const std::string& s, const std::string& target) {
+   int cnt = 0;
+   std::string::size_type pos = 0;
+   while ((pos = s.find(target, pos)) != std::string::npos) {
+          cnt++;
+          pos += target.length();
+   }
+   return cnt;
+}
+
 void test() {
     context ctx;
 
@@ -24,6 +34,9 @@ void test() {
     domain.push_back(world_sort);
     domain.push_back(world_sort);
     z3::func_decl reachable = ctx.function("reachable", domain, ctx.bool_sort());
+
+    //std::vector<int> world_cnt[3]; // some statistics
+    unsigned world_cnt[3]; // some statistics
 
     for (unsigned r = 1; r <= MAX_RELATIONS; r++) {
         random_formula rf(ctx, r, world_sort, relation_sort, dia, box, placeholder);
@@ -68,7 +81,8 @@ void test() {
                 e = simplifier.simplify(e);
 
                 if (e.to_string().length() < 20
-                || e.to_string().length() > 100
+                || e.to_string().length() > 500
+                || cnt_str(e.to_string(), "box") < 2
                 )
                     goto rep;
             }
@@ -110,8 +124,22 @@ void test() {
                 std::cerr << "Different results: std (" << result_std_translation << ") vs lazy-up (" << result_iterative_deepening << "): " << e << std::endl;
                 exit(-1);
             }
+
+            if (result_std_translation == sat) {
+                /*world_cnt[0].push_back(std_translation.domain_size());
+                world_cnt[1].push_back(iterative_deepening.domain_size());
+                world_cnt[2].push_back(lazy_up.domain_size());*/
+
+                world_cnt[0] += std_translation.domain_size();
+                world_cnt[1] += iterative_deepening.domain_size();
+                world_cnt[2] += lazy_up.domain_size();
+            }
         }
     }
+
+    std::cout << "STD: " << world_cnt[0] << std::endl;
+    std::cout << "ID : " << world_cnt[1] << std::endl;
+    std::cout << "UPE: " << world_cnt[2] << std::endl;
 }
 
 int main() {
