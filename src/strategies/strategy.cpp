@@ -195,6 +195,18 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
         m_processed_args.top().push_back(current.decl(args));
         return true;
     }
+    if (eq(current.decl, m_decls.global)) {
+        if (current.e.arg(0).is_false()) {
+            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+            return false;
+        }
+        if (current.e.arg(1).is_true()) {
+            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+            return false;
+        }
+        m_processed_args.top().push_back(current.decl(args));
+        return true;
+    }
     m_processed_args.top().push_back(current.decl(args));
     return true;
 }
@@ -209,12 +221,17 @@ check_result strategy::check(expr e) {
     LOG2("\nProcessed:\n" << e << "\n");
     e = create_formula(e);
     LOG("Adding: " << e);
-    if (!m_is_benchmark)
-        return m_last_result = solve(e);
+    m_is_solving = true;
+    if (!m_is_benchmark) {
+        m_last_result = solve(e);
+        m_is_solving = false;
+        return m_last_result;
+    }
     auto start = std::chrono::high_resolution_clock::now();
     m_last_result = solve(e);
     auto end = std::chrono::high_resolution_clock::now();
     m_solving_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    m_is_solving = false;
     return m_last_result;
 }
 

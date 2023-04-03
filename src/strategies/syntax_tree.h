@@ -112,6 +112,9 @@ public:
     const z3::sort& get_world_sort() const;
 
     syntax_tree_node* create_node(syntax_tree_node* parent, unsigned relation, const z3::expr& orig_subformula);
+    syntax_tree_node* create_node(const z3::expr& orig_subformula) {
+        return create_node(nullptr, -1, orig_subformula);
+    }
 
     syntax_tree_node* get_node(const z3::func_decl& f);
 

@@ -3,7 +3,7 @@
 #include <vector>
 #include <z3++.h>
 
-#include "iterative_deepening.h"
+#include "iterative_deepening_quant.h"
 #include "lazy_up.h"
 #include "standard_translation.h"
 
@@ -39,9 +39,7 @@ int main(int argc, char **argv) {
     cfg.set("sat.euf", true);
     z3::context ctx(cfg);*/
     z3::context ctx;
-    modal_decls decls(ctx);
-    decls.world_sort = ctx.uninterpreted_sort("World");
-    decls.relation_sort = ctx.uninterpreted_sort("Relation");
+    modal_decls decls(ctx.uninterpreted_sort("World"), ctx.uninterpreted_sort("Relation"));
     z3::sort_vector domain(ctx);
     func_decl placeholder = ctx.function("world", domain, decls.world_sort);
     decls.placeholder = placeholder();
@@ -54,17 +52,12 @@ int main(int argc, char **argv) {
     domain.push_back(decls.world_sort);
     domain.push_back(decls.world_sort);
     decls.reachable = ctx.function("reachable", domain, ctx.bool_sort());
+    
+    decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort(), ctx.bool_sort());
+    
+    z3::expr_vector parsed = ctx.parse_file(benchmark, decls.get_sorts(), decls.get_decls());
 
-    z3::sort_vector sorts(ctx);
-    sorts.push_back(decls.world_sort);
-    sorts.push_back(decls.relation_sort);
-    z3::func_decl_vector functions(ctx);
-    functions.push_back(decls.box);
-    functions.push_back(decls.dia);
-    functions.push_back(placeholder);
-    z3::expr_vector parsed = ctx.parse_file(benchmark, sorts, functions);
-
-    auto id  = [&decls](z3::context& ctx) { return new iterative_deepening(ctx, decls); };
+    auto id  = [&decls](z3::context& ctx) { return new iterative_deepening_quant(ctx, decls); };
     auto std = [&decls](z3::context& ctx) { return new standard_translation(ctx, decls); };
     auto upl = [&decls](z3::context& ctx) { return new lazy_up(ctx, decls); };
 

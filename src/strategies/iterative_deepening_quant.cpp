@@ -1,6 +1,6 @@
-#include "iterative_deepening.h"
+#include "iterative_deepening_quant.h"
 
-check_result iterative_deepening::solve(const expr& e) {
+check_result iterative_deepening_quant::solve(const expr& e) {
 
     expr x = fresh_world_constant();
     expr world = fresh_world_constant();

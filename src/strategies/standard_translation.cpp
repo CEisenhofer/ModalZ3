@@ -12,6 +12,7 @@ standard_translation::standard_translation(context& ctx, const modal_decls& decl
 expr standard_translation::create_formula(const expr& e) {
     std::stack<expr_info> expr_to_process;
     expr_info info(e);
+    info.top_level = true;
     expr_to_process.push(info);
 
     SASSERT(m_processed_args.empty());
@@ -25,11 +26,12 @@ expr standard_translation::create_formula(const expr& e) {
         VERIFY(current.e.is_app());
         LOG("Parsing (2): " << current.e);
         
-        if (is_modal(current.decl)) 
+        if (is_modal(current.decl) || eq(current.decl, m_decls.global)) 
             m_variables.push_back(fresh_world_constant());
 
         for (unsigned i = current.e.num_args(); i > 0; i--) {
             expr_info info2(current.e.arg(i - 1));
+            info2.top_level = current.top_level && current.decl.decl_kind() == Z3_OP_AND;
             expr_to_process.push(info2);
         }
 
@@ -64,6 +66,15 @@ expr standard_translation::create_formula(const expr& e) {
                     m_variables.pop_back();
                     expr old_world = m_variables.back();
                     expr forall = z3::forall(new_world, implies(m_decls.reachable(args[0], old_world, new_world), args[1]));
+                    LOG("Created: " << forall);
+                    m_processed_args.top().push_back(forall);
+                }
+                else if (eq(app.decl, m_decls.global)) {
+                    if (!current.top_level)
+                        throw parse_exception("\"global\" may only occur top-level");
+                    expr new_world = m_variables.back();
+                    m_variables.pop_back();
+                    expr forall = z3::forall(new_world, implies(args[0], args[1]));
                     LOG("Created: " << forall);
                     m_processed_args.top().push_back(forall);
                 }

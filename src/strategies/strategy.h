@@ -15,15 +15,31 @@ using namespace z3;
 struct modal_decls {
     sort world_sort, relation_sort;
     func_decl dia, box;
-    func_decl reachable;
-    func_decl 
+    func_decl reachable, global;
     expr placeholder;
     
-    modal_decls(context& ctx) :
-        world_sort(ctx), relation_sort(ctx),
-        dia(ctx), box(ctx),
-        reachable(ctx), 
-        placeholder(ctx) {}
+    modal_decls(const sort& world_sort, const sort& relation_sort) :
+        world_sort(world_sort), relation_sort(relation_sort),
+        dia(world_sort.ctx()), box(world_sort.ctx()),
+        reachable(world_sort.ctx()), global(world_sort.ctx()),
+        placeholder(world_sort.ctx()) {}
+        
+    z3::sort_vector get_sorts() {
+        z3::sort_vector sorts(world_sort.ctx());
+        sorts.push_back(world_sort);
+        sorts.push_back(relation_sort);
+        return sorts;
+    }
+    
+    z3::func_decl_vector get_decls() {
+        z3::func_decl_vector functions(world_sort.ctx());
+        functions.push_back(box);
+        functions.push_back(dia);
+        functions.push_back(reachable);
+        functions.push_back(global);
+        functions.push_back(placeholder.decl());
+        return functions;
+    }
 };
 
 class strategy {
@@ -47,6 +63,8 @@ protected:
 
     std::unordered_map<func_decl, unsigned, func_decl_hash, func_decl_eq> m_relation_to_id;
     func_decl_vector m_relation_list;
+    
+    bool m_is_solving = false;
     
     bool m_is_benchmark = false;
     std::chrono::microseconds m_solving_time;

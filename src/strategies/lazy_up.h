@@ -34,26 +34,32 @@ public:
 };
 
 struct init_info {
-    syntax_tree_node* const m_template;
-    modal_tree_node* const m_parent;
-    expr const m_justification;
-    bool const m_positive;
+    syntax_tree_node* m_template;
+    modal_tree_node* m_parent;
+    std::optional<expr> m_justification;
+    bool m_positive;
 
+    init_info() = default;
     init_info(syntax_tree_node* temp, modal_tree_node* parent, expr just, bool positive) : m_template(temp), m_parent(parent), m_justification(just), m_positive(positive) {}
+    
+    const expr& just() const {
+        return *m_justification;
+    }
 };
 
 class added_init_info_undo : public undo_trail {
-    std::stack<init_info>& m_to_init; // delay world generation to final
+    std::vector<init_info>& m_to_init; // delay world generation to final
+    init_info m_to_remove;
 public:
-    added_init_info_undo(std::stack<init_info>& to_init) : m_to_init(to_init) {}
+    added_init_info_undo(std::vector<init_info>& to_init, const init_info& to_remove) : m_to_init(to_init), m_to_remove(to_remove) {}
     void undo() override;
 };
 
 class removed_init_info_undo : public undo_trail {
-    std::stack<init_info>& m_to_init;
+    std::vector<init_info>& m_to_init;
     init_info m_info;
 public:
-    removed_init_info_undo(std::stack<init_info>& to_init, init_info info) : m_to_init(to_init), m_info(info) {}
+    removed_init_info_undo(std::vector<init_info>& to_init, init_info info) : m_to_init(to_init), m_info(info) {}
     void undo() override;
 };
 
@@ -65,17 +71,63 @@ class lazy_up : public strategy, user_propagator_base {
 
     std::vector<unsigned> m_trail_sz;
     std::stack<undo_trail*> m_trail;
-    std::stack<init_info> m_to_init; // delay world generation to final
+    
+    // delay world generation to final; order has to be irrelevant (reverting blocking will add back non-chronologically)
+    std::vector<init_info> m_to_init;
+    
+    z3::expr_vector m_assertions;
+    
+    std::vector<syntax_tree_node*> m_unconstraint_global; // true \sqsubseteq F
+    std::vector<std::vector<syntax_tree_node*>> m_constraint_global; // A \sqsubseteq F
 
+    void propagate(const z3::expr_vector& jst, const z3::expr& conseq) {
+        if (m_is_solving) {
+            z3::user_propagator_base::propagate(jst, conseq);
+            return;
+        }
+        if (jst.empty())
+            m_assertions.push_back(conseq);
+        else
+            m_assertions.push_back(implies(mk_and(jst), conseq));
+    }
+    
+    void propagate(const z3::expr& jst, const z3::expr& conseq) {
+        z3::expr_vector vec(jst.ctx());
+        if (!jst.is_true()) 
+            vec.push_back(jst);
+        return propagate(vec, conseq);
+    }
+    
+    void propagate(const z3::expr& jst1, const z3::expr& jst2, const z3::expr& conseq) {
+        if (jst1.is_true())
+            return propagate(jst2, conseq);
+        if (jst2.is_true())
+            return propagate(jst1, conseq);
+        z3::expr_vector vec(jst1.ctx()); 
+        vec.push_back(jst1);
+        vec.push_back(jst2);
+        return propagate(vec, conseq);
+    }
+    
     void propagate_to(modal_tree_node* new_world, unsigned relation);
     void propagate_from(syntax_tree_node* temp, modal_tree_node* parent, unsigned relation, const expr& justification);
 
-    unsigned get_variable(const func_decl& decl);
+    void apply_unconstrained(modal_tree_node* world);
+    
+    unsigned get_variable(const func_decl& decl) const;
+    unsigned get_or_create_variable(const func_decl& decl);
 
+    void add_unconstraint(syntax_tree_node* rhs) {
+        m_unconstraint_global.push_back(rhs);
+    }
+    
+    void add_constraint(const func_decl& var, bool neg, syntax_tree_node* rhs);
+    
 public:
 
     explicit lazy_up(context& ctx, const modal_decls& decls) :
-        strategy(ctx, decls), user_propagator_base(&m_solver) {
+        strategy(ctx, decls), user_propagator_base(&m_solver), 
+        m_assertions(ctx) {
 
         register_fixed();
         register_final();

@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "iterative_deepening.h"
+#include "iterative_deepening_quant.h"
 #include "lazy_up.h"
 #include "random_formula.h"
 #include "standard_translation.h"
@@ -21,9 +21,7 @@ unsigned cnt_str(const std::string& s, const std::string& target) {
 void test() {
     context ctx;
 
-    modal_decls decls(ctx);
-    decls.world_sort = ctx.uninterpreted_sort("World");
-    decls.relation_sort = ctx.uninterpreted_sort("Relation");
+    modal_decls decls(ctx.uninterpreted_sort("World"), ctx.uninterpreted_sort("Relation"));
     z3::sort_vector domain(ctx);
     func_decl placeholder = ctx.function("world", domain, decls.world_sort);
     decls.placeholder = placeholder();
@@ -42,7 +40,7 @@ void test() {
     memset(world_cnt, 0, sizeof(unsigned) * 3);
 
     for (unsigned r = 1; r <= MAX_RELATIONS; r++) {
-        random_formula rf(ctx, r, decls);
+        random_formula rf(ctx, decls, r);
         rf.set_max_depth(6);
         
 #if 0
@@ -94,7 +92,7 @@ void test() {
             std_translation.set_is_benchmark(true);
             check_result result_std_translation = std_translation.check(e);
             
-            iterative_deepening iterative_deepening(ctx, decls);
+            iterative_deepening_quant iterative_deepening(ctx, decls);
             iterative_deepening.set_is_benchmark(true);
             check_result result_iterative_deepening = iterative_deepening.check(e);
             

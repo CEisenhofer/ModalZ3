@@ -21,8 +21,10 @@ class modal_tree_node {
     std::vector<std::vector<spread_info>> m_spread; // positive modal operators
     z3::expr m_world_constant;
     z3::expr m_aux_predicate;
-    // std::vector<bool> m_propagated; // ids of those abstract worlds that propagated already to this world
-    std::vector<Z3_lbool> m_assignments;
+    std::vector<Z3_lbool> m_assignment_set;
+    std::vector<unsigned> m_assignment_list;
+    
+    modal_tree_node* m_blocked_by = nullptr;
 
 public:
     
@@ -38,23 +40,27 @@ public:
         return m_abstract;
     }
     
+    modal_tree_node* blocked_by() const {
+        return m_blocked_by;
+    }
+    
     z3::expr world_constant() const {
         return m_world_constant;
     }
     
     z3::expr aux_predicate() const {
-        SASSERT(m_aux_predicate.num_args() == 1 && eq(m_aux_predicate.arg(0), m_parent->world_constant()));
+        SASSERT(m_aux_predicate.is_true() || (m_aux_predicate.num_args() == 1 && eq(m_aux_predicate.arg(0), m_parent->world_constant())));
         return m_aux_predicate;
     }
 
-    bool is_assigned(unsigned variable) {
-        return m_assignments.size() > variable && m_assignments[variable] != Z3_L_UNDEF;
+    bool is_assigned(unsigned variable) const {
+        return m_assignment_set.size() > variable && m_assignment_set[variable] != Z3_L_UNDEF;
     }
 
-    Z3_lbool get_assignment(unsigned variable) {
-        if (m_assignments.size() <= variable)
+    Z3_lbool get_assignment(unsigned variable) const {
+        if (m_assignment_set.size() <= variable)
             return Z3_L_UNDEF;
-        return m_assignments[variable];
+        return m_assignment_set[variable];
     }
 
     void unassign(unsigned variable) {
@@ -67,10 +73,20 @@ public:
     }
 
     void assign(unsigned variable, Z3_lbool val) {
-        if (m_assignments.size() <= variable) {
-            m_assignments.resize(variable + 1);
+        if (m_assignment_set.size() <= variable) {
+            m_assignment_set.resize(variable + 1);
         }
-        m_assignments[variable] = val;
+        if (val == Z3_L_UNDEF) {
+            m_assignment_set[variable] = Z3_L_UNDEF;
+            SASSERT(!m_assignment_list.empty());
+            SASSERT(m_assignment_list.back() == variable);
+            // Otw. if we need non-chronological: the set contains additionally the index to the variable in the list
+            // We swap this element with the last element in the list and change the index for the last element accordingly
+            m_assignment_list.pop_back(); 
+            return;
+        }
+        m_assignment_set[variable] = val;
+        m_assignment_list.push_back(variable);
     }
 
     bool is_root() const {
@@ -101,21 +117,6 @@ public:
         SASSERT(relation < m_children.size());
         return m_spread[relation];
     }
-
-#if 0
-    bool has_propagated_by(syntax_tree_node* n) const {
-        if (m_propagated.size() <= n->get_id())
-            return false;
-        return m_propagated[n->get_id()];
-    }
-
-    void set_propagated_by(syntax_tree_node* n, bool val) {
-        for (unsigned i = m_propagated.size(); i <= n->get_id(); i++)
-            m_propagated.push_back(false);
-
-        m_propagated[n->get_id()] = val;
-    }
-#endif
 
     void add_child(modal_tree_node* node, unsigned relation) {
         if (m_children.size() <= relation)
@@ -149,6 +150,25 @@ public:
         SASSERT(m_spread.size() >= relation);
         SASSERT(!m_spread[relation].empty());
         m_spread[relation].pop_back();
+    }
+    
+    bool is_blocked() {
+        modal_tree_node* parent = this;
+        while ((parent = parent->get_parent()) != nullptr) {
+            // subset
+            for (unsigned v : m_assignment_list) {
+                Z3_lbool tval = this->get_assignment(v);
+                if (tval != Z3_L_UNDEF) {
+                    if (tval != parent->get_assignment(v))
+                        goto failed;
+                }
+            }
+            m_blocked_by = parent;
+            return true;
+            failed:
+            ;
+        }
+        return false;
     }
 };
 
