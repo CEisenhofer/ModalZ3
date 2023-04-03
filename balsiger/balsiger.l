@@ -11,6 +11,7 @@ not ~
 and &
 or \|
 imp ->
+eqv <->
 box \[(r1)?\]
 dia <(r1)?>
 true true
@@ -26,6 +27,7 @@ ws [ \n]+
 {and} return AND;
 {or} return OR;
 {imp} return IMP;
+{eqv} return EQV;
 {box} return BOX;
 {dia} return DIA;
 {true} return TRUE;

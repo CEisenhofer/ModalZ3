@@ -13,7 +13,8 @@ enum Flavour {
 	ENOT,
 	EAND,
 	EOR,
-	EIMP
+	EIMP,
+	EEQV
 };
 
 struct Expr {
@@ -78,6 +79,13 @@ void print_expr(struct Expr expr) {
 		print_expr(*expr.expr2);
 		printf(")");
 		break;
+	case EEQV:
+		printf("(= ");
+		print_expr(*expr.expr1);
+		printf(" ");
+		print_expr(*expr.expr2);
+		printf(")");
+		break;
 	}
 }
 
@@ -104,6 +112,7 @@ unsigned num_ids = 0;
 %token AND
 %token OR
 %token IMP
+%token EQV
 %token BOX
 %token DIA
 %token DOT
@@ -117,7 +126,7 @@ input: START DOT unary DOT END DOT {
      printf(")\n");
 };
 
-binary: or | and | imp | unary;
+binary: or | and | imp | eqv | unary;
 
 or: unary OR binary {
    $$.flavour = EOR;
@@ -135,6 +144,13 @@ and: unary AND binary {
 
 imp: unary IMP unary {
    $$.flavour = EIMP;
+   $$.head = NULL;
+   $$.expr1 = box_expr($1);
+   $$.expr2 = box_expr($3);
+}
+
+eqv: unary EQV unary {
+   $$.flavour = EEQV;
    $$.head = NULL;
    $$.expr1 = box_expr($1);
    $$.expr2 = box_expr($3);
