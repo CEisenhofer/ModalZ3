@@ -40,7 +40,7 @@ void print_expr(struct Expr expr) {
 		printf("false");
 		break;
 	case EID:
-		printf("(%s current)", expr.head);
+		printf("(%s world)", expr.head);
 		break;
 	case EBOX:
 		printf("(box r ");
@@ -214,6 +214,6 @@ false: FALSE { $$.flavour = EFALSE; }
 int main() {
 	printf("(declare-const r Relation)\n");
 	yyparse();
-	printf("(check-sat)\n");
+	//printf("(check-sat)\n");
 	return 0;
 }
