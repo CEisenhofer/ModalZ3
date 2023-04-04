@@ -188,8 +188,8 @@ id: ID {
 	// try looking up existing identifier
 	for(int i = 0; i < num_ids; i++) {
 		exists = true;
-		for(unsigned j = 0; ids[i][j] && j < yyleng; j++)
-			if(ids[i][j] != yytext[j]) {
+		for(unsigned j = 0; ids[i][j] || j < yyleng; j++)
+			if(!ids[i][j] || j == yyleng || ids[i][j] != yytext[j]) {
 				exists = false;
 				break;
 			}
