@@ -156,5 +156,7 @@ public:
 
     void output_model(const model& model, std::ostream &ostream) override;
 
+    Z3_lbool model_check(const z3::expr& e) override;
+    
     unsigned domain_size() override;
 };

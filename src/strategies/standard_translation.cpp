@@ -5,7 +5,7 @@
 #include "parse_exception.h"
 
 standard_translation::standard_translation(context& ctx, const modal_decls& decls) :
-            strategy(ctx, decls), m_variables(ctx) {
+            strategy(ctx, decls), m_variables(ctx), m_reachable(ctx.function("reachable", decls.relation_sort, decls.world_sort, decls.world_sort, ctx.bool_sort())) {
     m_variables.push_back(fresh_world_constant());
 }
 
@@ -65,7 +65,7 @@ expr standard_translation::create_formula(const expr& e) {
                     expr new_world = m_variables.back();
                     m_variables.pop_back();
                     expr old_world = m_variables.back();
-                    expr forall = z3::forall(new_world, implies(m_decls.reachable(args[0], old_world, new_world), args[1]));
+                    expr forall = z3::forall(new_world, implies(m_reachable(args[0], old_world, new_world), args[1]));
                     LOG("Created: " << forall);
                     m_processed_args.top().push_back(forall);
                 }
@@ -141,7 +141,7 @@ void standard_translation::output_model(const model& model, std::ostream& ostrea
             unsigned output_cnt = 0;
             for (const auto& w2 : domain) {
                 w2i++;
-                if (!model.eval(m_decls.reachable(r(), w1, w2), true).is_true())
+                if (!model.eval(m_reachable(r(), w1, w2), true).is_true())
                     continue;
                 output_cnt++;
                 ostream << "\tw" << w1i << " -> w" << w2i << "\n"; 

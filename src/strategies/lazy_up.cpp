@@ -111,9 +111,9 @@ expr lazy_up::create_formula(const expr& e) {
             LOG("Parsing (2): " << current.e);
 
             if (is_modal(current.decl)) {
-                SASSERT(z3::eq(current.decl, m_decls.box));
+                SASSERT(is_box(current.decl));
                 syntax_tree_node* existing;
-                if ((existing = current.world->get_child(current.e)) == nullptr) {
+                if ((existing = current.world->get_child_by_expr(current.e)) == nullptr) {
 
                     unsigned relation_id;
                     expr relation = current.e.arg(0);
@@ -129,7 +129,7 @@ expr lazy_up::create_formula(const expr& e) {
                     }
 
                     syntax_tree_node* new_node = m_syntax_tree->create_node(current.world, relation_id, current.e);
-                    SASSERT(!m_uf_to_id.contains(new_node->get_aux().decl()));
+                    SASSERT(get_variable(new_node->get_aux().decl()) == -1);
                     m_uf_to_id[new_node->get_aux().decl()] = m_uf_to_id.size();
                     LOG("Adding: " << new_node->get_aux().decl().name().str());
 
@@ -146,7 +146,7 @@ expr lazy_up::create_formula(const expr& e) {
 
                 m_processed_args.top().push_back(current.world->get_aux());
             }
-            else if (z3::eq(current.decl, m_decls.global)) {
+            else if (is_global(current.decl)) {
                 if (!current.top_level)
                     throw parse_exception("\"global\" may only occur top-level");
                 syntax_tree_node* new_node = m_syntax_tree->create_node(current.e);
@@ -203,8 +203,9 @@ expr lazy_up::create_formula(const expr& e) {
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
                     if (!args.empty() && z3::eq(args[0].get_sort(), m_decls.world_sort)) {
-                        if (!z3::eq(args[0], m_decls.placeholder))
-                            throw parse_exception("Currently not supporting ABox/complex world terms: " + args.to_string());
+                        if (!is_placeholder(args[0].decl())) {
+                            throw parse_exception("Currently not supporting ABox/complex world terms: " + current.e.to_string());
+                        }
                         auto ast = (z3::ast)z3::expr(ctx(), Z3_mk_bound(ctx(), 0, m_decls.world_sort));
                         args.set(0, ast); // replace by placeholder
                     }
@@ -212,10 +213,11 @@ expr lazy_up::create_formula(const expr& e) {
                     func_decl new_func = is_up
                             ? m_ctx.user_propagate_function(app.decl.name(), domain, app.decl.range())
                             : m_ctx.function(app.decl.name(), domain, app.decl.range());
-
+                    
                     m_processed_args.top().push_back(new_func(args));
                     if (!m_uf_set.contains(new_func)) {
                         LOG("Adding: " << new_func.name().str());
+                        m_orig_uf_to_new_uf[app.decl] = new_func;
                         m_uf_list.push_back(new_func);
                         m_uf_set.insert(new_func);
                         if (is_up)
@@ -316,8 +318,8 @@ void lazy_up::fixed(const expr& e, const expr& value) {
 
 void lazy_up::final() {
 
-    for (unsigned i = 0; i < m_to_init.size(); i++) {
-        LOG("Has to create " + m_to_init[i].m_template->get_template(false).to_string() + " because of " + m_to_init[i].m_justification->to_string() + " at world w" + std::to_string(m_to_init[i].m_parent->get_id()));
+    for (auto & i : m_to_init) {
+        LOG("Has to create " + i.m_template->get_template(false).to_string() + " because of " + i.m_justification->to_string() + " at world w" + std::to_string(i.m_parent->get_id()));
     }
     // TODO: First negative; then positive [performance reasons] (we then now already where to spread to)
     // TODO: Delay box evaluation
@@ -404,6 +406,178 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
     }
 }
 
-unsigned lazy_up::domain_size(){
+struct check_info {
+    
+    modal_tree_node* world;
+    z3::expr original_expr;
+    unsigned processed_idx = 0; // either the argument for normal operations or the child in case of modal operators
+    std::vector<expr> args;
+    
+    check_info(modal_tree_node* w, const z3::expr& e) : world(w), original_expr(e) {}
+    
+    func_decl decl() const {
+        return original_expr.decl();
+    }
+};
+
+Z3_lbool lazy_up::model_check(const expr& e) {
+    
+    std::stack<check_info> to_process;
+    to_process.push(check_info(m_modal_tree->get_root(), e));
+    to_process.push(to_process.top());
+    SASSERT(m_apply_list.empty());
+    model m = m_solver.get_model();
+    
+    while (to_process.size() > 1) {
+        const check_info current = to_process.top();
+        
+        func_decl f = current.decl();
+        Z3_decl_kind kind = f.decl_kind();
+        bool modal = is_modal(f);
+        
+        LOG("Checking " << current.original_expr << " with arg " << current.processed_idx);
+        
+        if (!modal && kind == Z3_OP_UNINTERPRETED) {
+            // Prop. variables
+            to_process.pop();
+            if (current.original_expr.num_args() > 0 && z3::eq(f.domain(0), m_decls.world_sort)) {
+                SASSERT(m_orig_uf_to_new_uf.contains(f));
+                unsigned vid = get_variable(*(m_orig_uf_to_new_uf[f]));
+                SASSERT(vid != -1);
+                if (!current.world->is_assigned(vid)) {
+                    to_process.top().args.push_back(current.original_expr);                    
+                }
+                else {
+                    to_process.top().args.push_back(ctx().bool_val(current.world->get_assignment(vid) == Z3_L_TRUE));
+                }
+            }
+            else {
+                to_process.top().args.push_back(m.eval(current.original_expr));
+            }
+            continue;
+        }
+        
+        unsigned max;
+        unsigned relation_id;
+        if (modal) {
+            relation_id = m_relation_to_id.contains(current.original_expr.arg(0).decl()) 
+                    ? m_relation_to_id[current.original_expr.arg(0).decl()]
+                    : -1; // the relation might be optimized away. Hence, there are no such children
+            max = current.world->get_child_relations_cnt() > relation_id ? current.world->get_children(relation_id).size() : 0;
+        }
+        else if (is_global(f)) {
+            max = m_modal_tree->size();
+        }
+        else{
+            max = current.original_expr.num_args();
+        }
+        
+        if (!current.args.empty()) {
+            if (kind == Z3_OP_AND || (modal && is_box(f))) {
+                if (to_process.top().args.back().is_false()) {
+                    to_process.pop();
+                    to_process.top().args.push_back(ctx().bool_val(false));
+                    continue;
+                }
+            }
+            else if (kind == Z3_OP_OR || (modal && is_dia(f))) {
+                if (to_process.top().args.back().is_true()) {
+                    to_process.pop();
+                    to_process.top().args.push_back(ctx().bool_val(true));
+                    continue;
+                }
+            }
+            else if (kind == Z3_OP_IMPLIES) {
+                SASSERT(to_process.top().args.size() <= 2);
+                if (
+                        (to_process.top().args.size() == 1 && to_process.top().args.back().is_false()) || 
+                        (to_process.top().args.size() == 2 && to_process.top().args.back().is_true())) {
+                    to_process.pop();
+                    to_process.top().args.push_back(ctx().bool_val(true));
+                    continue;
+                }
+            }
+        }
+        
+        if (current.processed_idx >= max) {
+            LOG("Final check for " << current.original_expr);
+            std::vector<expr> args = std::move(to_process.top().args);
+            to_process.pop();
+            
+            if (kind == Z3_OP_AND || is_box(f) || is_global(f)) {
+                for (const auto& arg : args) {
+                    SASSERT(!arg.is_false()); // otw. we would have detected earlier
+                    if (!arg.is_true())
+                        goto failed;
+                }
+                to_process.top().args.push_back(ctx().bool_val(true));
+            }
+            else if (kind == Z3_OP_AND || is_dia(f)) {
+                for (const auto& arg : args) {
+                    SASSERT(!arg.is_true()); // otw. we would have detected earlier
+                    if (!arg.is_false())
+                        goto failed;
+                }
+                to_process.top().args.push_back(ctx().bool_val(false));
+            }
+            else if (kind == Z3_OP_NOT) {
+                SASSERT(args.size() == 1);
+                if (args[0].is_true())
+                    to_process.top().args.push_back(ctx().bool_val(false));
+                else if (args[0].is_false())
+                    to_process.top().args.push_back(ctx().bool_val(true));
+                else
+                    goto failed;
+            }
+            else if (kind == Z3_OP_IMPLIES) {
+                SASSERT(args.size() == 2);
+                SASSERT(!args[0].is_false()); // otw. we would have detected earlier
+                SASSERT(!args[1].is_true());
+                if (args[0].is_true() && args[1].is_false())
+                    to_process.top().args.push_back(ctx().bool_val(false));
+                else
+                    goto failed;
+            }
+            else if (kind == Z3_OP_EQ) {
+                SASSERT(args.size() == 2);
+                if (
+                        (args[0].is_true() && args[1].is_true()) ||
+                        (args[0].is_false() && args[1].is_false()))
+                    to_process.top().args.push_back(ctx().bool_val(true));
+                else if (
+                        (args[0].is_false() && args[1].is_true()) ||
+                        (args[0].is_true() && args[1].is_false()))
+                    to_process.top().args.push_back(ctx().bool_val(false));
+                else
+                    goto failed;
+            }
+            else {
+                failed:
+                to_process.top().args.push_back(current.original_expr); // cannot evaluate; just keep it
+            }
+            continue;
+        }
+        
+        if (modal) {
+            to_process.push({ current.world->get_children(relation_id)[to_process.top().processed_idx++], current.original_expr.arg(1) });
+        }
+        else if (is_global(f)) {
+            to_process.push({ m_modal_tree->get_worlds()[to_process.top().processed_idx++], current.original_expr.arg(0) });
+        }
+        else {
+            to_process.push({ current.world, current.original_expr.arg(to_process.top().processed_idx++) });
+        }
+    }
+    
+    SASSERT(to_process.size() == 1);
+    SASSERT(to_process.top().args.size() == 1);
+    expr ret = to_process.top().args[0];
+    if (!ret.is_true() && !ret.is_false()) {
+        std::cout << "Incomplete model: " << ret << std::endl; 
+    }
+    return ret.is_true() ? Z3_L_TRUE : ret.is_false() ? Z3_L_FALSE : Z3_L_UNDEF;
+}
+
+unsigned lazy_up::domain_size() {
     return m_modal_tree->size();
 }

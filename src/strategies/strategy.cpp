@@ -4,12 +4,36 @@
 #include "parse_exception.h"
 
 bool strategy::is_modal(const func_decl& decl) const {
-    return eq(decl, m_decls.box) || eq(decl, m_decls.dia);
+    return is_box(decl) || is_dia(decl);
+}
+
+bool strategy::is_box(const func_decl& decl) const {
+    return eq(decl, m_decls.box);
+}
+
+bool strategy::is_dia(const func_decl& decl) const {
+    return eq(decl, m_decls.dia);
+}
+
+bool strategy::is_placeholder(const func_decl& decl) const {
+    return eq(decl, m_decls.placeholder);
+}
+
+bool strategy::is_local(const func_decl& decl) const {
+    return eq(decl, m_decls.local);
+}
+
+bool strategy::is_global(const func_decl &decl) const {
+    return eq(decl, m_decls.global);
+}
+
+bool strategy::is_ml_interpreted(const func_decl& decl) const {
+    return is_modal(decl) || is_local(decl) || is_global(decl);
 }
 
 strategy::strategy(context& ctx, const modal_decls& decls) :
     m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown),
-    m_decls(decls), m_uf_list(ctx), m_relation_list(ctx) {}
+    m_decls(decls), m_uf_list(ctx), m_relation_list(ctx), m_solving_time() {}
 
 
 expr strategy::simplify_formula(const expr& e) {
@@ -45,7 +69,7 @@ expr strategy::simplify_formula(const expr& e) {
             }
             m_processed_args.pop();
             
-            post_rewrite(app, args);
+            post_rewrite(app.decl, args);
         }
     }
     
@@ -92,7 +116,7 @@ bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& cu
         if (!current.e.arg(0).is_const())
             throw parse_exception("The relation in " + current.e.to_string() + " has to be a constant");
         // Transform to box-only form by duality (for simplicity)
-        if (eq(e.decl(), m_decls.dia)) {
+        if (is_dia(e.decl())) {
             expr_to_process.push(expr_info(!m_decls.box(current.e.arg(0), !current.e.arg(1))));
             return false;
         }
@@ -105,29 +129,29 @@ bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& cu
 }
 
 // TODO: Convert to NNF?
-bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
-    if (current.decl.decl_kind() == Z3_OP_NOT) {
+bool strategy::post_rewrite(const func_decl& f, expr_vector& args) {
+    if (f.decl_kind() == Z3_OP_NOT) {
         if (args[0].is_not()) {
             m_processed_args.top().push_back(args[0].arg(0));
             return false;
         }
         else if (args[0].is_false()) {
-            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+            m_processed_args.top().push_back(ctx().bool_val(true));
             return false;
         }
         else if (args[0].is_true()) {
-            m_processed_args.top().push_back(current.e.ctx().bool_val(false));
+            m_processed_args.top().push_back(ctx().bool_val(false));
             return false;
         }
-        m_processed_args.top().push_back(current.decl(args));
+        m_processed_args.top().push_back(f(args));
         return true;
     }
-    if (current.decl.decl_kind() == Z3_OP_AND) {
+    if (f.decl_kind() == Z3_OP_AND) {
         unsigned last = 0;
         const unsigned sz = args.size();
         for (unsigned i = 0; i < sz; i++) {
             if (args[i].is_false()) {
-                m_processed_args.top().push_back(current.e.ctx().bool_val(false));
+                m_processed_args.top().push_back(ctx().bool_val(false));
                 return false;
             }
             else if (!args[i].is_true()) {
@@ -141,7 +165,7 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
             }
         }
         if (last == 0) {
-            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+            m_processed_args.top().push_back(ctx().bool_val(true));
             return false;
         }
         else if (last == 1) {
@@ -149,17 +173,16 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
             return false;
         }
         SASSERT(last <= args.size());
-        current.arity = last;
         args.resize(last);
-        m_processed_args.top().push_back(current.decl(args));
+        m_processed_args.top().push_back(f(args));
         return true;
     }
-    if (current.decl.decl_kind() == Z3_OP_OR) {
+    if (f.decl_kind() == Z3_OP_OR) {
         unsigned last = 0;
         const unsigned sz = args.size();
         for (unsigned i = 0; i < sz; i++) {
             if (args[i].is_true()) {
-                m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+                m_processed_args.top().push_back(ctx().bool_val(true));
                 return false;
             }
             else if (!args[i].is_false()) {
@@ -173,7 +196,7 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
             }
         }
         if (last == 0) {
-            m_processed_args.top().push_back(current.e.ctx().bool_val(false));
+            m_processed_args.top().push_back(ctx().bool_val(false));
             return false;
         }
         else if (last == 1) {
@@ -181,33 +204,38 @@ bool strategy::post_rewrite(expr_info& current, expr_vector& args) {
             return false;
         }
         SASSERT(last <= args.size());
-        current.arity = last;
         args.resize(last);
-        m_processed_args.top().push_back(current.decl(args));
+        m_processed_args.top().push_back(f(args));
         return true;
     }
-    if (is_modal(current.decl)) {
-        SASSERT(eq(current.decl, m_decls.box));
+    if (is_modal(f)) {
+        SASSERT(is_box(f));
         if (args[1].is_true()) {
-            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+            m_processed_args.top().push_back(ctx().bool_val(true));
             return false;
         }
-        m_processed_args.top().push_back(current.decl(args));
+        m_processed_args.top().push_back(f(args));
         return true;
     }
-    if (eq(current.decl, m_decls.global)) {
-        if (current.e.arg(0).is_false()) {
-            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
+    if (is_global(f)) {
+        if (args[0].is_true()) {
+            m_processed_args.top().push_back(ctx().bool_val(true));
             return false;
         }
-        if (current.e.arg(1).is_true()) {
-            m_processed_args.top().push_back(current.e.ctx().bool_val(true));
-            return false;
-        }
-        m_processed_args.top().push_back(current.decl(args));
+        m_processed_args.top().push_back(f(args));
         return true;
     }
-    m_processed_args.top().push_back(current.decl(args));
+    if (is_local(f)) {
+        if (is_placeholder(args[0].decl()))
+            throw parse_exception("\"local\" expects a concrete world as 1st argument");
+        if (args[1].is_true()) {
+            m_processed_args.top().push_back(ctx().bool_val(true));
+            return false;
+        }
+        m_processed_args.top().push_back(f(args));
+        return true;
+    }
+    m_processed_args.top().push_back(f(args));
     return true;
 }
 

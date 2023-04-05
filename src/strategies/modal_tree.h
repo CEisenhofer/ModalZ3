@@ -134,7 +134,7 @@ public:
         return m_children.size();
     }
 
-    const std::vector<modal_tree_node*> get_children(unsigned relation) const {
+    const std::vector<modal_tree_node*>& get_children(unsigned relation) const {
         SASSERT(relation < m_children.size());
         return m_children[relation];
     }

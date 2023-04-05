@@ -15,7 +15,7 @@ std::string syntax_tree_node::aux_to_string() const {
     return m_aux.to_string();
 }
 
-syntax_tree_node* syntax_tree_node::get_child(const z3::expr & e) const {
+syntax_tree_node* syntax_tree_node::get_child_by_expr(const z3::expr & e) const {
     auto it = m_expr_to_repr.find(e);
     if (it == m_expr_to_repr.end())
         return nullptr;

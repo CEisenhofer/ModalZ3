@@ -24,7 +24,7 @@ void test() {
     modal_decls decls(ctx.uninterpreted_sort("World"), ctx.uninterpreted_sort("Relation"));
     z3::sort_vector domain(ctx);
     func_decl placeholder = ctx.function("world", domain, decls.world_sort);
-    decls.placeholder = placeholder();
+    decls.placeholder = placeholder;
     domain.push_back(decls.relation_sort);
     domain.push_back(ctx.bool_sort());
     decls.dia = ctx.function("dia", domain, ctx.bool_sort());
@@ -32,8 +32,9 @@ void test() {
     
     domain.pop_back();
     domain.push_back(decls.world_sort);
-    domain.push_back(decls.world_sort);
-    decls.reachable = ctx.function("reachable", domain, ctx.bool_sort());
+    domain.push_back(ctx.bool_sort());
+    decls.local = ctx.function("local", domain, ctx.bool_sort());
+    decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort());
 
     //std::vector<int> world_cnt[3]; // some statistics
     unsigned world_cnt[3]; // some statistics

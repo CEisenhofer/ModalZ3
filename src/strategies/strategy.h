@@ -15,13 +15,13 @@ using namespace z3;
 struct modal_decls {
     sort world_sort, relation_sort;
     func_decl dia, box;
-    func_decl reachable, global;
-    expr placeholder;
+    func_decl local, global;
+    func_decl placeholder;
     
     modal_decls(const sort& world_sort, const sort& relation_sort) :
         world_sort(world_sort), relation_sort(relation_sort),
         dia(world_sort.ctx()), box(world_sort.ctx()),
-        reachable(world_sort.ctx()), global(world_sort.ctx()),
+        local(world_sort.ctx()), global(world_sort.ctx()),
         placeholder(world_sort.ctx()) {}
         
     z3::sort_vector get_sorts() {
@@ -35,9 +35,9 @@ struct modal_decls {
         z3::func_decl_vector functions(world_sort.ctx());
         functions.push_back(box);
         functions.push_back(dia);
-        functions.push_back(reachable);
+        functions.push_back(local);
         functions.push_back(global);
-        functions.push_back(placeholder.decl());
+        functions.push_back(placeholder);
         return functions;
     }
 };
@@ -60,6 +60,8 @@ protected:
     func_decl_vector m_uf_list;
     std::unordered_set<func_decl, func_decl_hash, func_decl_eq> m_uf_set;
     std::unordered_map<func_decl, unsigned, func_decl_hash, func_decl_eq> m_uf_to_id;
+    
+    std::unordered_map<func_decl, std::optional<func_decl>, func_decl_hash, func_decl_eq> m_orig_uf_to_new_uf;
 
     std::unordered_map<func_decl, unsigned, func_decl_hash, func_decl_eq> m_relation_to_id;
     func_decl_vector m_relation_list;
@@ -70,6 +72,12 @@ protected:
     std::chrono::microseconds m_solving_time;
 
     bool is_modal(const func_decl& decl) const;
+    bool is_box(const func_decl& decl) const;
+    bool is_dia(const func_decl& decl) const;
+    bool is_placeholder(const func_decl& decl) const;
+    bool is_local(const func_decl& decl) const;
+    bool is_global(const func_decl& decl) const;
+    bool is_ml_interpreted(const func_decl& decl) const;
     
     strategy(context& ctx, const modal_decls& decls);
     
@@ -82,7 +90,7 @@ protected:
 
     virtual void output_model(const model& model, std::ostream &ostream) = 0;
     
-    bool post_rewrite(expr_info& current, expr_vector& args);
+    bool post_rewrite(const func_decl& f, expr_vector& args);
     bool pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& current);
 
     virtual check_result solve(const z3::expr& e) { 
@@ -124,6 +132,9 @@ public:
     check_result check(expr e);
     
     void output_state(std::ostream& ostream);
+    
+    // Probably inefficient. However, we want a solver and not a model-checker. Propositional only for now
+    virtual Z3_lbool model_check(const z3::expr& e) { throw exception("Not implemented!"); }
 
     virtual unsigned domain_size() = 0;
 };

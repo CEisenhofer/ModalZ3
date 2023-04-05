@@ -48,7 +48,7 @@ class syntax_tree_node {
     
 public:
     
-    syntax_tree_node* get_child(const z3::expr& e) const;
+    syntax_tree_node* get_child_by_expr(const z3::expr& e) const;
 
     unsigned get_id() const {
         return m_id;

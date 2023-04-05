@@ -11,6 +11,7 @@ using namespace z3;
 class standard_translation : public strategy {
 
     expr_vector m_variables;
+    func_decl m_reachable;
     
     expr create_formula(const expr& e) override;
 
