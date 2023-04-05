@@ -512,7 +512,7 @@ Z3_lbool lazy_up::model_check(const expr& e) {
                 }
                 to_process.top().args.push_back(ctx().bool_val(true));
             }
-            else if (kind == Z3_OP_AND || is_dia(f)) {
+            else if (kind == Z3_OP_OR || is_dia(f)) {
                 for (const auto& arg : args) {
                     SASSERT(!arg.is_true()); // otw. we would have detected earlier
                     if (!arg.is_false())

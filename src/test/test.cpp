@@ -83,8 +83,8 @@ void test() {
                 e = simplifier.simplify(e);
 
                 if (e.to_string().length() < 20
-                //|| e.to_string().length() > 500
-                || cnt_str(e.to_string(), "box") < 2
+                || e.to_string().length() > 100
+                || cnt_str(e.to_string(), "box") < 1//2
                 )
                     goto rep;
             }
@@ -130,9 +130,12 @@ void test() {
                 exit(-1);
             }
             if (result_lazy_up == z3::sat) {
-                if (lazy_up.model_check(e)) {
+                if (lazy_up.model_check(e) != Z3_L_TRUE) {
                     std::cerr << "Seed: " << rf.get_last_seed() << ":\n";
                     std::cerr << "Verification failure: " << e << ":\n";
+                    std::cerr << "\"Model\":\n";
+                    lazy_up.output_state(std::cerr);
+
                     exit(-1);
                 }
             }

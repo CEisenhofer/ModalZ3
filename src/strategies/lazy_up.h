@@ -120,13 +120,15 @@ class lazy_up : public strategy, user_propagator_base {
     void add_unconstraint(syntax_tree_node* rhs) {
         m_unconstraint_global.push_back(rhs);
     }
-    
+
     void add_constraint(const func_decl& var, bool neg, syntax_tree_node* rhs);
-    
+
+    void output_model(const model& model, std::ostream &ostream) override;
+
 public:
 
     explicit lazy_up(context& ctx, const modal_decls& decls) :
-        strategy(ctx, decls), user_propagator_base(&m_solver), 
+        strategy(ctx, decls), user_propagator_base(&m_solver),
         m_assertions(ctx) {
 
         register_fixed();
@@ -153,8 +155,6 @@ public:
     user_propagator_base* fresh(context& new_ctx) override {
         return this;
     }
-
-    void output_model(const model& model, std::ostream &ostream) override;
 
     Z3_lbool model_check(const z3::expr& e) override;
     
