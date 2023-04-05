@@ -83,9 +83,9 @@ void test() {
                 e = simplifier.simplify(e);
 
                 if (e.to_string().length() < 20
-                || e.to_string().length() > 100
-                || cnt_str(e.to_string(), "box") < 1//2
-                )
+                //|| e.to_string().length() > 100
+                || cnt_str(e.to_string(), "box") < 2
+                ) // hopefully avoid trivial examples
                     goto rep;
             }
 
