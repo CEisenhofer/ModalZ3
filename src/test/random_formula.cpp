@@ -32,13 +32,13 @@ decltype(random_formula::m_cases) random_formula::create_cases(random_formula* f
     v.emplace_back(2, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.box(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
     v.emplace_back(5, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
         if (!v.empty() && f.m_new_var_gen(f.m_mt)) {
-            return v[(f.m_general_gen(f.m_mt) % v.size())](f.m_decls.placeholder); 
+            return v[(f.m_general_gen(f.m_mt) % v.size())](f.m_decls.placeholder());
         }
         else {
             Z3_sort domain_sort = f.m_decls.world_sort;
             func_decl func(f.m_ctx, Z3_mk_fresh_func_decl(f.m_ctx, "Var", 1, &domain_sort, f.m_ctx.bool_sort()));
             v.push_back(func);
-            return func(f.m_decls.placeholder);
+            return func(f.m_decls.placeholder());
         }
     });
 

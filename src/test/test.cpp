@@ -129,6 +129,13 @@ void test() {
                 std::cerr << "Different results: std (" << result_std_translation << ") vs lazy-up (" << result_iterative_deepening << "): " << e << std::endl;
                 exit(-1);
             }
+            if (result_lazy_up == z3::sat) {
+                if (lazy_up.model_check(e)) {
+                    std::cerr << "Seed: " << rf.get_last_seed() << ":\n";
+                    std::cerr << "Verification failure: " << e << ":\n";
+                    exit(-1);
+                }
+            }
 
 #if 0
             std::cout << std_translation.solving_time().count() << " STD" << std::endl;

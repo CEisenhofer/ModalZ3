@@ -83,7 +83,7 @@ expr standard_translation::create_formula(const expr& e) {
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
                     if (!args.empty() && z3::eq(args[0].get_sort(), m_decls.world_sort)) {
-                        if (!z3::eq(args[0], m_decls.placeholder))
+                        if (!z3::eq(args[0].decl(), m_decls.placeholder))
                             throw parse_exception("Currently not supporting ABox/complex world terms: " + args.to_string());
                         z3::expr x = m_variables.back();
                         args.set(0, x);

@@ -166,7 +166,7 @@ expr lazy_up::create_formula(const expr& e) {
                     bool neg = lhs.is_not();
                     if (neg)
                         lhs = lhs.arg(0);
-                    if (lhs.decl().decl_kind() != Z3_OP_UNINTERPRETED || lhs.num_args() != 1 || !z3::eq(lhs.arg(0).get_sort(), m_decls.world_sort) || !z3::eq(lhs.arg(0), m_decls.placeholder))
+                    if (lhs.decl().decl_kind() != Z3_OP_UNINTERPRETED || lhs.num_args() != 1 || !z3::eq(lhs.arg(0).get_sort(), m_decls.world_sort) || !z3::eq(lhs.arg(0).get_sort(), m_decls.placeholder))
                         throw parse_exception("For now, the lhs of \"global\" must be a generalized propositional variable");
                     add_constraint(lhs.decl(), neg, new_node);
                 }
