@@ -277,9 +277,8 @@ void strategy::output_state(std::ostream& ostream) {
             ostream << "UNSAT\n";
             break;
         default:
-            ostream << "UNKNOWN:\n\t" << m_solver.reason_unknown();
+            ostream << "UNKNOWN:\n\t" << m_solver.reason_unknown() << "\n";
             break;
     }
     std::flush(ostream);
 }
-

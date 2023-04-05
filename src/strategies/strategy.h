@@ -65,7 +65,7 @@ protected:
 
     std::unordered_map<func_decl, unsigned, func_decl_hash, func_decl_eq> m_relation_to_id;
     func_decl_vector m_relation_list;
-    
+
     bool m_is_solving = false;
     
     bool m_is_benchmark = false;
@@ -114,6 +114,14 @@ public:
     
     std::chrono::microseconds solving_time() const {
         return m_solving_time;
+    }
+
+    void set_timeout(unsigned limit) {
+        m_solver.set(":timeout", limit);
+    }
+
+    void set_memout(unsigned limit) {
+        m_solver.set(":max_memory", limit);
     }
 
     const z3::sort& get_world_sort() const {

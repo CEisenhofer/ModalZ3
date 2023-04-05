@@ -9,19 +9,33 @@
 #include "standard_translation.h"
 
 const char* HELP =
-" Mode File\n"
+" [-m=size_in_mb] [-t=timeout_in_ms] Mode File\n"
 "Solves a multi-modal formula\n\n"
 "Mode\t one of: std (std translation), id (iterative deepening), upl (user-propagator; lazy), upe (user-propagator; eager)\n"
 "File\t Path to an SMTLIB2 set_is_benchmark\n";
 
 int main(int argc, char **argv) {
-    if(argc != 3) {
+    unsigned start = 1;
+    unsigned limit_mem = 0;
+    unsigned limit_time = 0;
+    for (; start < argc; start++) {
+        if (strncmp(argv[start], "-m=", 3) == 0) {
+            limit_mem = atoi(argv[start] + 3);
+            continue;
+        }
+        if (strncmp(argv[start], "-t=", 3) == 0) {
+            limit_time = atoi(argv[start] + 3);
+            continue;
+        }
+        break;
+    }
+    if (argc - start != 2) {
         std::cerr << "wrong number of arguments" << std::endl;
         std::cerr << argv[0] << HELP;
         return EXIT_FAILURE;
     }
-    std::string_view mode(argv[1]);
-    const char* path = argv[2];
+    std::string_view mode(argv[start]);
+    const char* path = argv[start + 1];
     std::vector<std::string> paths;
     
     if (!std::filesystem::exists(path)) {
@@ -96,6 +110,10 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         strategy* str = it->second(ctx);
+        if (limit_time)
+            str->set_timeout(limit_time);
+        if (limit_mem)
+            str->set_memout(limit_mem);
         check_result res = str->check(z3::mk_and(parsed));
         str->output_state(std::cout);
         
