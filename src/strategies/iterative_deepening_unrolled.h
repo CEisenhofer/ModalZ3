@@ -18,7 +18,8 @@ public:
          decls.world_sort,
          decls.world_sort,
          ctx.bool_sort()
-        ))
+        )),
+        m_named_worlds(ctx)
     {}
 
     // trivial overrides
@@ -36,4 +37,8 @@ protected:
     func_decl m_reachable;
     expr unroll(const expr &expr, unsigned world);
     expr unroll_and_cache(const expr &expr, unsigned world);
+
+    // TODO should probably go in strategy
+    std::unordered_set<unsigned> m_named_world_ids;
+    expr_vector m_named_worlds;
 };

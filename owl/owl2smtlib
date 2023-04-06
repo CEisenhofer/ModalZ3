@@ -7,7 +7,7 @@ def translate_class(klass):
         # owl.Thing is assumed to always be true
         if klass.namespace.name == 'owl' and klass.name == 'Thing':
             return 'true'
-        return f"({klass.name} world)"
+        return f"(_{klass.name} world)"
     elif isinstance(klass, owl.Not):
         negated = translate_class(klass.Class)
         return f"(not {negated})"
@@ -20,12 +20,12 @@ def translate_class(klass):
     elif isinstance(klass, owl.Restriction):
         if klass.type == owl.SOME:
             reachable = translate_class(klass.value)
-            return f"(dia {klass.property.name} {reachable}))"
+            return f"(dia _{klass.property.name} {reachable})"
         elif klass.type == owl.ONLY:
             reachable = translate_class(klass.value)
-            return f"(box {klass.property.name} {reachable}))"
+            return f"(box _{klass.property.name} {reachable})"
         elif klass.type == owl.VALUE:
-            return f"(reachable {klass.property.name} world {klass.value.name})"
+            return f"(dia _{klass.property.name} (= world _{klass.value.name}))"
         # TODO counting constraints
         elif klass.type == owl.MIN or klass.type == owl.EXACTLY or klass.type == owl.MAX:
             return f"true"
@@ -33,27 +33,11 @@ def translate_class(klass):
             print(klass)
             assert False
     elif isinstance(klass, owl.OneOf):
-        disjunction = ' '.join(f"(= world {instance})" for instance in klass.instances)
+        disjunction = ' '.join(f"(= world _{instance.name})" for instance in klass.instances)
         return f"(or {disjunction})"
     else:
         print(klass)
         assert False
-
-def translate_class_implication(left, right):
-    if isinstance(left, owl.EntityClass):
-        right = translate_class(right)
-        # trivial implication, usually owl.Thing
-        if right == "true":
-            return
-        print(f"(assert (global ({left.name} world) {right}))")
-    elif isinstance(left, owl.Or):
-        for klass in left.Classes:
-            translate_class_implication(klass, right)
-    else:
-        # give up, have to translate as (global true F)
-        left = translate_class(left)
-        right = translate_class(right)
-        print(f"(assert (global true (=> {left} {right})))")
 
 if __name__ == '__main__':
     import sys
@@ -63,48 +47,46 @@ if __name__ == '__main__':
 
     print("; individual declarations")
     for individual in ontology.individuals():
-        print(f"(declare-const {individual.name} World)")
+        print(f"(declare-const _{individual.name} World)")
     print()
 
     print("; class declarations")
     for klass in ontology.classes():
-        print(f"(declare-fun {klass.name} (World) Bool)")
+        print(f"(declare-fun _{klass.name} (World) Bool)")
     print()
 
     print("; property declarations")
     for property in ontology.properties():
-        print(f"(declare-const {property.name} Relation)")
+        print(f"(declare-const _{property.name} Relation)")
     print()
 
     print("; different individuals")
     for disjoint in ontology.different_individuals():
-        names = ' '.join(entity.name for entity in disjoint.entities)
+        names = ' '.join(f'_{entity.name}' for entity in disjoint.entities)
         print(f"(assert (distinct {names}))")
     print()
 
     print("; class instances")
     for klass in ontology.classes():
         for instance in klass.instances():
-            print(f"(assert ({klass.name} {instance.name}))")
+            print(f"(assert (_{klass.name} _{instance.name}))")
     print()
 
     print("; disjoint classes")
     for disjoint in ontology.disjoint_classes():
-        classes = disjoint.entities
-        for klass in classes:
-            for other in classes:
-                if klass == other:
-                    continue
-                print(f"(assert (global ({klass.name} world) (not ({other.name} world))))")
+        instances = " ".join(f"(_{klass.name} world)" for klass in disjoint.entities)
+        print(f"(assert (global ((_ at-most 1) {instances})))")
     print()
 
     print("; class properties")
     for klass in ontology.classes():
+        translated_klass = translate_class(klass)
         for property in klass.is_a:
-            translate_class_implication(klass, property)
+            translated_property = translate_class(property)
+            print(f"(assert (global (=> {translated_klass} {translated_property})))")
         for property in klass.equivalent_to:
-            translate_class_implication(klass, property)
-            translate_class_implication(property, klass)
+            translated_property = translate_class(property)
+            print(f"(assert (global (= {translated_klass} {translated_property})))")
     print()
 
     print("; property properties")
@@ -112,17 +94,15 @@ if __name__ == '__main__':
         # TODO compound domain/range constraints
         if property.domain and len(property.domain) == 1 and isinstance(property.domain[0], owl.EntityClass):
             domain = property.domain[0]
-            print(f"(assert (global (not ({domain.name} world)) (not (dia {property.name} true))))")
+            print(f"(assert (global (=> (not (_{domain.name} world)) (not (dia _{property.name} true)))))")
         if property.range and len(property.range) == 1 and isinstance(property.range[0], owl.EntityClass):
             range = property.range[0]
-            print(f"(assert (global true (box {property.name} ({range.name} world))))")
-
-        if property.inverse_property:
-            print(f"(assert (inverse {property.name} {property.inverse_property.name}))")
+            print(f"(assert (global (box _{property.name} (_{range.name} world))))")
 
         # TODO functional properties
         # TODO transitive properties
+        # TODO inverse properties
         for subject, object in property.get_relations():
             if isinstance(type(subject), owl.EntityClass) and isinstance(type(object), owl.EntityClass):
-                print(f"(assert (reachable {property.name} {subject.name} {object.name}))")
+                print(f"(assert (global (=> (= world _{subject.name}) (dia _{property.name} (= world _{object.name})))))")
             # TODO metadata
