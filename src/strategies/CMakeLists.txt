@@ -6,7 +6,11 @@ add_library(ast
     lazy_up.cpp
     strategy.cpp
     syntax_tree.cpp
-iterative_deepening_quant.cpp iterative_deepening_quant.h)
+    iterative_deepening_quant.cpp
+    iterative_deepening_quant.h
+    iterative_deepening_unrolled.cpp
+    iterative_deepening_unrolled.h
+)
 
 target_link_libraries(ast utils)
 include_directories("../utils")

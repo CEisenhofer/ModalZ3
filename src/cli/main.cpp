@@ -6,13 +6,14 @@
 #include <z3++.h>
 
 #include "iterative_deepening_quant.h"
+#include "iterative_deepening_unrolled.h"
 #include "lazy_up.h"
 #include "standard_translation.h"
 
 const char* HELP =
 " [-m=size_in_mb] [-t=timeout_in_ms] Mode File\n"
 "Solves a multi-modal formula\n\n"
-"Mode\t one of: std (std translation), id (iterative deepening), upl (user-propagator; lazy), upe (user-propagator; eager)\n"
+"Mode\t one of: std (std translation), id (iterative deepening), id2 (iterative deepening with unrolling), upl (user-propagator; lazy), upe (user-propagator; eager)\n"
 "File\t Path to an SMTLIB2 set_is_benchmark\n";
 
 int main(int argc, char **argv) {
@@ -94,12 +95,14 @@ int main(int argc, char **argv) {
         z3::expr_vector parsed = ctx.parse_file(input.c_str(), decls.get_sorts(), decls.get_decls());
     
         auto id  = [&decls](z3::context& ctx) { return new iterative_deepening_quant(ctx, decls); };
+        auto id2  = [&decls](z3::context& ctx) { return new iterative_deepening_unrolled(ctx, decls); };
         auto std = [&decls](z3::context& ctx) { return new standard_translation(ctx, decls); };
         auto upl = [&decls](z3::context& ctx) { return new lazy_up(ctx, decls); };
     
         std::unordered_map<std::string_view, std::function<strategy*(z3::context&)>> mapping =
         {
             { "id",  id  },
+            { "id2",  id2  },
             { "std", std },
             { "upl", upl },
         };
