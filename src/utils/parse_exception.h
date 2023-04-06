@@ -1,10 +1,7 @@
-#include <exception>
+#include <stdexcept>
 #include <string>
 
-class parse_exception : public std::exception {
-
+class parse_exception : public std::runtime_error {
 public:
-
-    parse_exception(std::string msg) : std::exception(msg.c_str()) {}
-
+    parse_exception(const std::string &msg) : std::runtime_error(msg) {}
 };

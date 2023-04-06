@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstring>
 #include "lazy_up.h"
 #include "parse_exception.h"
 

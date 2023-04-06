@@ -1,3 +1,4 @@
+#include <cstring>
 #include <iterator>
 #include <filesystem>
 #include <string_view>
