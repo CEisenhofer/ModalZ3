@@ -17,8 +17,13 @@ class modal_tree_node {
     
     syntax_tree_node* m_abstract;
     modal_tree_node* m_parent;
-    std::vector<std::vector<modal_tree_node*>> m_children; // negative modal operators
+    std::vector<std::vector<modal_tree_node*>> m_existing_children; // negative modal operators
     std::vector<std::vector<spread_info>> m_spread; // positive modal operators
+
+    // contains also children that have been removed again by backtracking
+    // => CDCL might assign even values, although they do not even exist any more (we have to retain them)
+    std::vector<modal_tree_node*> m_actual_children; // indexed by abstract id
+
     z3::expr m_world_constant;
     z3::expr m_aux_predicate;
     std::vector<Z3_lbool> m_assignment_set;
@@ -114,36 +119,49 @@ public:
     }
 
     const std::vector<spread_info>& get_spread(unsigned relation) {
-        SASSERT(relation < m_children.size());
+        SASSERT(relation < m_existing_children.size());
         return m_spread[relation];
     }
 
-    void add_child(modal_tree_node* node, unsigned relation) {
-        if (m_children.size() <= relation)
-            m_children.resize(relation + 1);
-        m_children[relation].push_back(node);
+    void add_child(modal_tree_node* node, syntax_tree_node* abs) {
+        unsigned relation = abs->get_relation();
+        if (m_existing_children.size() <= relation)
+            m_existing_children.resize(relation + 1);
+        m_existing_children[relation].push_back(node);
+
+        unsigned id = abs->get_id();
+        if (m_actual_children.size() <= id)
+            m_actual_children.resize(id + 1);
+        m_actual_children[id] = node;
     }
 
     const modal_tree_node* last_child(unsigned relation) const {
-        SASSERT(m_children.size() >= relation);
-        SASSERT(!m_children[relation].empty());
-        return m_children[relation].back();
+        SASSERT(m_existing_children.size() >= relation);
+        SASSERT(!m_existing_children[relation].empty());
+        return m_existing_children[relation].back();
     }
 
     unsigned get_child_relations_cnt() const {
-        return m_children.size();
+        return m_existing_children.size();
+    }
+
+    modal_tree_node* get_created_child(syntax_tree_node* abs) {
+        unsigned id = abs->get_id();
+        if (id >= m_actual_children.size())
+            return nullptr;
+        return m_actual_children[id];
     }
 
     const std::vector<modal_tree_node*>& get_children(unsigned relation) const {
-        SASSERT(relation < m_children.size());
-        return m_children[relation];
+        SASSERT(relation < m_existing_children.size());
+        return m_existing_children[relation];
     }
 
     void remove_and_delete_last_child(unsigned relation) {
-        SASSERT(m_children.size() >= relation);
-        SASSERT(!m_children[relation].empty());
-        delete m_children[relation].back();
-        m_children[relation].pop_back();
+        SASSERT(m_existing_children.size() >= relation);
+        SASSERT(!m_existing_children[relation].empty());
+        // delete m_existing_children[relation].back();
+        m_existing_children[relation].pop_back();
     }
 
     void remove_last_spread(unsigned relation) {
@@ -178,43 +196,57 @@ class modal_tree {
 
     syntax_tree* m_syntax;
 
-    std::vector<modal_tree_node*> m_nodes;
+    std::vector<modal_tree_node*> m_existing_nodes;
+    std::vector<modal_tree_node*> m_actual_nodes; // superset of existing worlds (those in the model)
     std::unordered_map<z3::expr, modal_tree_node*, expr_hash, expr_eq> m_expr_to_node;
     
 public:
     
     modal_tree(syntax_tree* syn) : m_ctx(syn->ctx()), m_syntax(syn) {
-        create_node(syn->get_root(), nullptr, -1, m_ctx.bool_val(true));
+        get_or_create_node(syn->get_root(), nullptr, m_ctx.bool_val(true));
     }
     
     modal_tree_node* get_root() const {
-        SASSERT(!m_nodes.empty());
-        SASSERT(m_nodes[0]->is_root());
-        return m_nodes[0];
+        SASSERT(!m_existing_nodes.empty());
+        SASSERT(m_existing_nodes[0]->is_root());
+        return m_existing_nodes[0];
     }
 
     sort get_world_sort() const {
         return m_syntax->get_world_sort();
     }
     
-    modal_tree_node* create_node(syntax_tree_node* abs, modal_tree_node* parent, unsigned relation, const z3::expr& aux_predicate) {
-        z3::expr new_world = z3::expr(m_ctx, Z3_mk_fresh_const(m_ctx, "world", get_world_sort()));
-        modal_tree_node* node = new modal_tree_node(m_nodes.size(), abs, parent, new_world, aux_predicate);
-        LOG("Creating: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
+    modal_tree_node* get_or_create_node(syntax_tree_node* abs, modal_tree_node* parent, const z3::expr& aux_predicate) {
+        modal_tree_node* node = nullptr;
+        z3::expr world_constant = z3::expr(m_ctx);
+        if (parent && (node = parent->get_created_child(abs))) {
+            world_constant = node->world_constant();
+            LOG("Recreated: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
+        }
+        else {
+            world_constant = z3::expr(m_ctx, Z3_mk_fresh_const(m_ctx, "world", get_world_sort()));
+            node = new modal_tree_node(m_existing_nodes.size(), abs, parent, world_constant, aux_predicate);
+            LOG("Creating: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
+            m_expr_to_node[world_constant] = node;
+            m_actual_nodes.push_back(node);
+        }
         if (parent)
-            parent->add_child(node, relation);
-        m_nodes.push_back(node);
-        m_expr_to_node[new_world] = node;
+            parent->add_child(node, abs);
+        m_existing_nodes.push_back(node);
         return node;
     }
     
     ~modal_tree() {
-        for (unsigned i = 0; i < m_nodes.size(); i++)
-            delete m_nodes[i];
+        for (unsigned i = 0; i < m_actual_nodes.size(); i++)
+            delete m_actual_nodes[i];
     }
     
-    unsigned size() const {
-        return m_nodes.size();
+    unsigned existing_size() const {
+        return m_existing_nodes.size();
+    }
+
+    unsigned actual_size() const {
+        return m_actual_nodes.size();
     }
 
     modal_tree_node* get(const z3::expr& e) const {
@@ -223,16 +255,16 @@ public:
         return iterator->second;
     }
 
-    const std::vector<modal_tree_node*>& get_worlds() const {
-        return m_nodes;
+    const std::vector<modal_tree_node*>& get_existing_worlds() const {
+        return m_existing_nodes;
     };
 
     void remove_last_child(unsigned relation) {
-        // TODO: Or better keep the entry and just disable it?
-        SASSERT(m_nodes.size() > 1);
-        m_expr_to_node.erase(m_nodes.back()->world_constant());
-        m_nodes.back()->get_parent()->remove_and_delete_last_child(relation);
-        m_nodes.pop_back();
+        // We delete the world from the model but keep the data-structure
+        SASSERT(m_existing_nodes.size() > 1);
+        //m_expr_to_node.erase(m_nodes.back()->world_constant());
+        m_existing_nodes.back()->get_parent()->remove_and_delete_last_child(relation);
+        m_existing_nodes.pop_back();
     }
     
 };

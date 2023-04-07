@@ -6,7 +6,7 @@
 #include "random_formula.h"
 #include "standard_translation.h"
 
-constexpr unsigned RANDOM_FORMULAS = 300;
+constexpr unsigned RANDOM_FORMULAS = 1000;
 constexpr unsigned MAX_RELATIONS = 3;
 
 unsigned cnt_str(const std::string& s, const std::string& target) {
@@ -83,12 +83,14 @@ void test() {
                 standard_translation simplifier(ctx, decls);
                 e = simplifier.simplify(e);
 
-                if (e.to_string().length() < 20
-                //|| e.to_string().length() > 100
+                if (e.to_string().length() < 50
+                || e.to_string().length() > 500
                 || cnt_str(e.to_string(), "box") < 2
                 ) // hopefully avoid trivial examples
                     goto rep;
             }
+
+            std::cout << e << "\n\n" << std::endl;
 
             standard_translation std_translation(ctx, decls);
             std_translation.set_is_benchmark(true);

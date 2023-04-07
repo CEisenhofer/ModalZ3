@@ -8,7 +8,7 @@ check_result iterative_deepening_quant::solve(const expr& e) {
     m_solver.add(e);
 
     for (unsigned num_worlds = 1;; num_worlds++) {
-        LOG("Trying size " << num_worlds << "...");
+        LOG("Trying existing_size " << num_worlds << "...");
         expr_vector assumptions(ctx());
         assumptions.push_back(forall(x, constraint));
         if (m_solver.check(assumptions) == sat) {

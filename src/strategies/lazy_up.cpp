@@ -3,6 +3,11 @@
 #include "lazy_up.h"
 #include "parse_exception.h"
 
+std::ostream& operator<<(std::ostream& os, undo_trail* undo) {
+    undo->output(os);
+    return os;
+}
+
 void assignment_undo::undo() {
     m_world->unassign(m_var);
 }
@@ -26,6 +31,10 @@ void removed_init_info_undo::undo() {
     m_to_init.push_back(m_info);
 }
 
+void log_clause(expr const& proof, expr_vector const& clause) {
+    LOG("Proof: " << proof);
+    LOG("Clause: " << clause);
+}
 
 void lazy_up::propagate_to(modal_tree_node* new_world, unsigned relation) {
     SASSERT(!new_world->is_root());
@@ -250,7 +259,7 @@ expr lazy_up::create_formula(const expr& e) {
     
     expr_vector& new_operands = m_assertions;
     
-    for (modal_tree_node* existing : m_modal_tree->get_worlds())
+    for (modal_tree_node* existing : m_modal_tree->get_existing_worlds())
         apply_unconstrained(existing);
     
     if (assertion.is_and()) {
@@ -290,6 +299,7 @@ void lazy_up::pop(unsigned num_scopes) {
     m_trail_sz.resize(m_trail_sz.size() - num_scopes);
     while (m_trail.size() > old_sz) {
         undo_trail* trail = m_trail.top();
+        LOG("Undo: " << trail);
         m_trail.pop();
         trail->undo();
         delete trail;
@@ -302,23 +312,25 @@ void lazy_up::fixed(const expr& e, const expr& value) {
     LOG(e << " = " << value);
     func_decl func = e.decl();
     SASSERT(func.arity() > 0);
-    expr arg = e.arg(func.arity() - 1);
+    expr arg = e.arg(0);
     SASSERT(z3::eq(arg.get_sort(), m_decls.world_sort));
     modal_tree_node* world = m_modal_tree->get(arg);
     unsigned var = get_variable(e.decl());
     SASSERT(var != -1);
+    SASSERT(!world->is_assigned(var));
     world->assign(var, v);
-    m_trail.push(new assignment_undo(world, var));
+    add_trail(new assignment_undo(world, var));
 
     syntax_tree_node* abs = m_syntax_tree->get_node(func);
     if (abs) { // Modal operator; otw. just ordinary predicate
         m_to_init.push_back(init_info(abs, world, e, v));
-        m_trail.push(new added_init_info_undo(m_to_init, m_to_init.back()));
+        add_trail(new added_init_info_undo(m_to_init, m_to_init.back()));
     }
 }
 
 void lazy_up::final() {
     try {
+        LOG("Final check");
         // TODO: First negative; then positive [performance reasons] (we then now already where to spread to)
         // TODO: Delay box evaluation
         unsigned last = 0;
@@ -326,18 +338,18 @@ void lazy_up::final() {
             const auto& to_init = m_to_init[i];
             if (to_init.m_parent->is_blocked()) { // TODO: Cache!
                 m_to_init[last++] = m_to_init[i];
-                LOG("World w" + std::to_string(to_init.m_parent->get_id()) + " blocked by w" + std::to_string(to_init.m_parent->blocked_by()->get_id()));
+                //LOG("World w" + std::to_string(to_init.m_parent->get_id()) + " blocked by w" + std::to_string(to_init.m_parent->blocked_by()->get_id()));
                 continue;
             }
-            m_trail.push(new removed_init_info_undo(m_to_init, to_init));
+            add_trail(new removed_init_info_undo(m_to_init, to_init));
             const unsigned relation = to_init.m_template->get_relation();
             if (!to_init.m_positive) {
-                modal_tree_node* new_world = m_modal_tree->create_node(to_init.m_template, to_init.m_parent, relation, to_init.just());
-                m_trail.push(new create_world_undo(m_modal_tree, relation));
+                modal_tree_node* new_world = m_modal_tree->get_or_create_node(to_init.m_template, to_init.m_parent, to_init.just());
+                add_trail(new create_world_undo(m_modal_tree, relation));
                 if (to_init.m_template->is_template_false()) {
                     LOG("Propagating (SK): No propagation required; body trivial");
                 }
-                else{
+                else {
                     z3::expr inst = to_init.m_template->initialize(new_world->world_constant(), false);
                     propagate(to_init.just(), inst);
                     LOG("Propagating (SK): " << !to_init.just() << " => " << inst);
@@ -348,14 +360,13 @@ void lazy_up::final() {
             else {
                 spread_info info(to_init.m_template, to_init.just());
                 to_init.m_parent->add_spread(info, to_init.m_template->get_relation());
-                m_trail.push(new add_spread_info_undo(to_init.m_parent, relation));
+                add_trail(new add_spread_info_undo(to_init.m_parent, relation));
                 propagate_from(to_init.m_template, to_init.m_parent, relation, to_init.just());
             }
         }
         m_to_init.resize(last);
     }
     catch (const exception& e) {
-        std::cout << "Exception: " << e.msg() << std::endl;
         if (strcmp(e.msg(), "canceled") != 0) {
             throw;
         }
@@ -366,12 +377,16 @@ void lazy_up::created(const expr& e) {
     LOG("Encountered: " << e);
 }
 
+void lazy_up::decide(expr& e, unsigned& bit, Z3_lbool& val) {
+    LOG("Splitting " << e << " = " << (val == Z3_L_TRUE ? "true" : "false"));
+}
+
 void lazy_up::output_model(const model& model, std::ostream& ostream) {
 
     unsigned ri = 0;
     for (const auto& r : m_relation_list) {
         ostream << "Relation " << r.name().str() << ":\n";
-        for (modal_tree_node* n : m_modal_tree->get_worlds()) {
+        for (modal_tree_node* n : m_modal_tree->get_existing_worlds()) {
             if (n->get_child_relations_cnt() <= ri)
                 continue;
             for (modal_tree_node* child : n->get_children(ri)) {
@@ -394,7 +409,7 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
         if (uf.arity() != 1)
             ostream << "\tSkipped because of complexity\n";
         else {
-            for (modal_tree_node* n : m_modal_tree->get_worlds()) {
+            for (modal_tree_node* n : m_modal_tree->get_existing_worlds()) {
                 if (m_uf_to_id.contains(uf)) { // to also have "don't-cares" for booleans at least
                     unsigned id = m_uf_to_id[uf];
                     Z3_lbool val = n->get_assignment(id);
@@ -472,7 +487,7 @@ Z3_lbool lazy_up::model_check(const expr& e) {
             max = current.world->get_child_relations_cnt() > relation_id ? current.world->get_children(relation_id).size() : 0;
         }
         else if (is_global(f)) {
-            max = m_modal_tree->size();
+            max = m_modal_tree->existing_size();
         }
         else{
             max = current.original_expr.num_args();
@@ -568,7 +583,7 @@ Z3_lbool lazy_up::model_check(const expr& e) {
             to_process.push({ current.world->get_children(relation_id)[to_process.top().processed_idx++], current.original_expr.arg(1) });
         }
         else if (is_global(f)) {
-            to_process.push({ m_modal_tree->get_worlds()[to_process.top().processed_idx++], current.original_expr.arg(0) });
+            to_process.push({ m_modal_tree->get_existing_worlds()[to_process.top().processed_idx++], current.original_expr.arg(0) });
         }
         else {
             to_process.push({ current.world, current.original_expr.arg(to_process.top().processed_idx++) });
@@ -585,5 +600,5 @@ Z3_lbool lazy_up::model_check(const expr& e) {
 }
 
 unsigned lazy_up::domain_size() {
-    return m_modal_tree->size();
+    return m_modal_tree->existing_size();
 }

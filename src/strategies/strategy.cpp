@@ -147,6 +147,7 @@ bool strategy::post_rewrite(const func_decl& f, expr_vector& args) {
         return true;
     }
     if (f.decl_kind() == Z3_OP_AND) {
+        // TODO: Remove duplicates and eliminate if contains duals
         unsigned last = 0;
         const unsigned sz = args.size();
         for (unsigned i = 0; i < sz; i++) {
@@ -248,15 +249,25 @@ check_result strategy::check(expr e) {
     e = simplify_formula(e); // we need to call this to collect uf/relation information [maybe separate later]
     LOG2("\nProcessed:\n" << e << "\n");
     e = create_formula(e);
-    LOG("Adding: " << e);
+    LOG("Adding: " << e << "\n");
     m_is_solving = true;
     if (!m_is_benchmark) {
-        m_last_result = solve(e);
+        try {
+            m_last_result = solve(e);
+        }
+        catch (const exception& e) {
+            m_last_result = z3::unknown; // sometimes because of timeout
+        }
         m_is_solving = false;
         return m_last_result;
     }
     auto start = std::chrono::high_resolution_clock::now();
-    m_last_result = solve(e);
+    try {
+        m_last_result = solve(e);
+    }
+    catch (const exception& e) {
+        m_last_result = z3::unknown; // sometimes because of timeout
+    }
     auto end = std::chrono::high_resolution_clock::now();
     m_solving_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     m_is_solving = false;

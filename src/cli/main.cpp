@@ -11,15 +11,17 @@
 #include "standard_translation.h"
 
 const char* HELP =
-" [-m=size_in_mb] [-t=timeout_in_ms] Mode File\n"
+" [-m=size_in_mb] [-t=timeout_in_ms] [-r] Mode File\n"
 "Solves a multi-modal formula\n\n"
 "Mode\t one of: std (std translation), id (iterative deepening), id2 (iterative deepening with unrolling), upl (user-propagator; lazy), upe (user-propagator; eager)\n"
 "File\t Path to an SMTLIB2 set_is_benchmark\n";
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
+
     unsigned start = 1;
     unsigned limit_mem = 0;
     unsigned limit_time = 0;
+    bool recursive = false;
     for (; start < argc; start++) {
         if (strncmp(argv[start], "-m=", 3) == 0) {
             limit_mem = atoi(argv[start] + 3);
@@ -27,6 +29,10 @@ int main(int argc, char **argv) {
         }
         if (strncmp(argv[start], "-t=", 3) == 0) {
             limit_time = atoi(argv[start] + 3);
+            continue;
+        }
+        if (strncmp(argv[start], "-r", 2) == 0) {
+            recursive = true;
             continue;
         }
         break;
@@ -39,6 +45,7 @@ int main(int argc, char **argv) {
     std::string_view mode(argv[start]);
     const char* path = argv[start + 1];
     std::vector<std::string> paths;
+    std::stack<std::string> to_explore;
     
     if (!std::filesystem::exists(path)) {
         std::cerr << "path does not exist" << std::endl;
@@ -47,10 +54,21 @@ int main(int argc, char **argv) {
     }
     
     if (std::filesystem::is_directory(path)) {
-        for (const auto& entry : std::filesystem::directory_iterator(path)) {
-            std::string ext = entry.path().extension().string();
-            if (entry.is_regular_file() && ext == ".smt2")
-                paths.push_back(entry.path().string());
+        to_explore.push({ path });
+        while (!to_explore.empty()) {
+            std::string current = to_explore.top();
+            to_explore.pop();
+            for (const auto& entry : std::filesystem::directory_iterator(current)) {
+                if (entry.is_directory()) {
+                    if (recursive)
+                        to_explore.push(entry.path().string());
+                }
+                else {
+                    std::string ext = entry.path().extension().string();
+                    if (entry.is_regular_file() && ext == ".smt2")
+                        paths.push_back(entry.path().string());
+                }
+            }
         }
     }
     else {
@@ -92,7 +110,14 @@ int main(int argc, char **argv) {
         decls.local = ctx.function("local", domain, ctx.bool_sort());
         decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort());
         
-        z3::expr_vector parsed = ctx.parse_file(input.c_str(), decls.get_sorts(), decls.get_decls());
+        z3::expr_vector parsed = z3::expr_vector(ctx);
+        try {
+            parsed = ctx.parse_file(input.c_str(), decls.get_sorts(), decls.get_decls());
+        }
+        catch (const exception& e) {
+            std::cerr << "Parsing failed: " << e.msg() << std::endl;
+            continue;
+        }
     
         auto id  = [&decls](z3::context& ctx) { return new iterative_deepening_quant(ctx, decls); };
         auto id2  = [&decls](z3::context& ctx) { return new iterative_deepening_unrolled(ctx, decls); };

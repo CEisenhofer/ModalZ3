@@ -7,7 +7,10 @@ class undo_trail {
 public:
     virtual ~undo_trail() = default;
     virtual void undo() = 0;
+    virtual void output(std::ostream& os) = 0;
 };
+
+std::ostream& operator<<(std::ostream& os, undo_trail* undo);
 
 class assignment_undo : public undo_trail {
     modal_tree_node* m_world;
@@ -15,6 +18,9 @@ class assignment_undo : public undo_trail {
 public:
     assignment_undo(modal_tree_node* world, unsigned var) : m_world(world), m_var(var) {}
     void undo() override;
+    void output(std::ostream& os) override {
+        os << "assigned v" << m_var << " to " << (m_world->get_assignment(m_var) == Z3_L_TRUE ? "true" : "false");
+    }
 };
 
 class create_world_undo : public undo_trail {
@@ -23,6 +29,10 @@ class create_world_undo : public undo_trail {
 public:
     create_world_undo(modal_tree* modal_tree, unsigned relation) : m_modal_tree(modal_tree), m_relation(relation) {}
     void undo() override;
+    void output(std::ostream& os) override {
+        modal_tree_node* last_added = m_modal_tree->get_existing_worlds().back();
+        os << "created world w" << last_added->get_id() << " with aux " << last_added->aux_predicate() << " and " << last_added->world_constant() << " reachable from w" << last_added->get_parent()->get_id() << " via relation r" << m_relation;
+    }
 };
 
 class add_spread_info_undo : public undo_trail {
@@ -31,6 +41,10 @@ class add_spread_info_undo : public undo_trail {
 public:
     add_spread_info_undo(modal_tree_node* world, unsigned relation) : m_world(world), m_relation(relation) {}
     void undo() override;
+    void output(std::ostream& os) override {
+        spread_info last_added = m_world->get_spread(m_relation).back();
+        os << "added that a" << last_added.m_template->get_id() << " will spread to all children of w" << m_world->get_id() << " (" << m_world->world_constant() << ")" << " via relation r" << m_relation;
+    }
 };
 
 struct init_info {
@@ -53,6 +67,9 @@ class added_init_info_undo : public undo_trail {
 public:
     added_init_info_undo(std::vector<init_info>& to_init, const init_info& to_remove) : m_to_init(to_init), m_to_remove(to_remove) {}
     void undo() override;
+    void output(std::ostream& os) override {
+        os << "added init-info a" << m_to_remove.m_template->get_id() << " justified by " << *(m_to_remove.m_justification) << " with parent w" << m_to_remove.m_parent->get_id();
+    }
 };
 
 class removed_init_info_undo : public undo_trail {
@@ -61,8 +78,12 @@ class removed_init_info_undo : public undo_trail {
 public:
     removed_init_info_undo(std::vector<init_info>& to_init, init_info info) : m_to_init(to_init), m_info(info) {}
     void undo() override;
+    void output(std::ostream& os) override {
+        os << "removed init-info a" << m_info.m_template->get_id() << " justified by " << *(m_info.m_justification) << " with parent w" << m_info.m_parent->get_id();
+    }
 };
 
+void log_clause(z3::expr const& proof, z3::expr_vector const& clause);
 
 class lazy_up : public strategy, user_propagator_base {
 
@@ -79,6 +100,16 @@ class lazy_up : public strategy, user_propagator_base {
     
     std::vector<syntax_tree_node*> m_unconstraint_global; // true \sqsubseteq F
     std::vector<std::vector<syntax_tree_node*>> m_constraint_global; // A \sqsubseteq F
+
+#ifndef NDEBUG
+        on_clause_eh_t log = log_clause;
+        on_clause logger;
+#endif
+
+    void add_trail(undo_trail* to_undo) {
+        LOG("Adding: " << to_undo);
+        m_trail.push(to_undo);
+    }
 
     void propagate(const z3::expr_vector& jst, const z3::expr& conseq) {
         if (m_is_solving) {
@@ -129,11 +160,18 @@ public:
 
     explicit lazy_up(context& ctx, const modal_decls& decls) :
         strategy(ctx, decls), user_propagator_base(&m_solver),
-        m_assertions(ctx) {
+        m_assertions(ctx)
+#ifndef NDEBUG
+        , logger(m_solver, log)
+#endif
+        {
 
         register_fixed();
         register_final();
         register_created();
+#ifndef NDEBUG
+        register_decide();
+#endif
     }
 
     ~lazy_up() {
@@ -151,6 +189,7 @@ public:
     void fixed(const expr& e, const expr& value) override;
     void final() override;
     void created(const expr& e) override;
+    void decide(expr& e, unsigned& bit, Z3_lbool& val) override;
 
     user_propagator_base* fresh(context& new_ctx) override {
         return this;
