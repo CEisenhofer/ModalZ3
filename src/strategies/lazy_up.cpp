@@ -342,9 +342,8 @@ void lazy_up::final() {
         else
             LOG("Final check: " << ++final_checks);
         LOG("Current state: " << *m_modal_tree << "\n");
-        // TODO: First negative; then positive [performance reasons] (we then now already where to spread to)
-        // TODO: Delay box evaluation
         unsigned last = m_to_init.size();
+        // TODO: Reverse
         for (unsigned i = m_to_init.size(); i > 0; i--) {
             const auto& to_init = m_to_init[i - 1];
             if (to_init.m_parent->is_blocked()) { // TODO: Cache!

@@ -75,7 +75,7 @@ void test() {
 #endif
         
         for (unsigned i = 0; i < RANDOM_FORMULAS; i++) {
-            if (i % 100 == 0) 
+            if (i % 10 == 0)
                 std::cout << "Iteration " << i << std::endl; 
             rep:
             expr e = rf.get();
@@ -84,8 +84,8 @@ void test() {
                 e = simplifier.simplify(e);
 
                 if (e.to_string().length() < 50
-                || e.to_string().length() > 100
-                || cnt_str(e.to_string(), "box") < 8
+                || e.to_string().length() > 300
+                || cnt_str(e.to_string(), "box") < 3
                 ) // hopefully avoid trivial examples
                     goto rep;
             }
@@ -96,11 +96,10 @@ void test() {
             std_translation.set_is_benchmark(true);
             check_result result_std_translation = std_translation.check(e);
             
-            //iterative_deepening_quant iterative_deepening(ctx, decls);
-            //iterative_deepening.set_is_benchmark(true);
-            //check_result result_iterative_deepening = iterative_deepening.check(e);
-            check_result result_iterative_deepening = result_std_translation;
-            
+            iterative_deepening_quant iterative_deepening(ctx, decls);
+            iterative_deepening.set_is_benchmark(true);
+            check_result result_iterative_deepening = iterative_deepening.check(e);
+
             lazy_up lazy_up(ctx, decls);
             lazy_up.set_is_benchmark(true);
             check_result result_lazy_up = lazy_up.check(e);
@@ -144,7 +143,7 @@ void test() {
                 }
             }
 
-#if 0
+#if 1
             std::cout << std_translation.solving_time().count() << " STD" << std::endl;
             std::cout << iterative_deepening.solving_time().count() << " ID" << std::endl;
             std::cout << lazy_up.solving_time().count() << " UP" << std::endl;
@@ -156,7 +155,7 @@ void test() {
                 world_cnt[2].push_back(lazy_up.domain_size());*/
 
                 world_cnt[0] += std_translation.domain_size();
-                //world_cnt[1] += iterative_deepening.domain_size();
+                world_cnt[1] += iterative_deepening.domain_size();
                 world_cnt[2] += lazy_up.domain_size();
             }
         }

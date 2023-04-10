@@ -69,8 +69,9 @@ expr strategy::simplify_formula(const expr& e) {
                 LOG("\t" << args.back());
             }
             m_processed_args.pop();
-            
-            post_rewrite(app.decl, args);
+            z3::expr res = post_rewrite(app.decl, args);
+            m_processed_args.top().push_back(res);
+            LOG("Simpl. Subexpression: " << res);
         }
     }
     
@@ -129,117 +130,200 @@ bool strategy::pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& cu
     return true;
 }
 
+#define REMOVE_ARG(I)                           \
+        do {                                    \
+            z3::expr t = args[args.size() - 1]; \
+            args.set(i, t);                     \
+            args.pop_back();                    \
+        } while (false)
+
 // TODO: Convert to NNF?
-bool strategy::post_rewrite(const func_decl& f, expr_vector& args) {
+z3::expr strategy::post_rewrite(const func_decl& f, expr_vector& args) {
     if (f.decl_kind() == Z3_OP_NOT) {
         if (args[0].is_not()) {
-            m_processed_args.top().push_back(args[0].arg(0));
-            return false;
+            return args[0].arg(0);
         }
         else if (args[0].is_false()) {
-            m_processed_args.top().push_back(ctx().bool_val(true));
-            return false;
+            return ctx().bool_val(true);
         }
         else if (args[0].is_true()) {
-            m_processed_args.top().push_back(ctx().bool_val(false));
-            return false;
+            return ctx().bool_val(false);
         }
-        m_processed_args.top().push_back(f(args));
-        return true;
+        return f(args);
     }
+    // TODO: Merge and/or
     if (f.decl_kind() == Z3_OP_AND) {
-        // TODO: Remove duplicates and eliminate if contains duals
-        unsigned last = 0;
-        const unsigned sz = args.size();
-        for (unsigned i = 0; i < sz; i++) {
-            if (args[i].is_false()) {
-                m_processed_args.top().push_back(ctx().bool_val(false));
-                return false;
+        std::unordered_map<z3::expr, bool, expr_hash, expr_eq> enc;
+        std::unordered_map<z3::expr, std::optional<expr_vector>, expr_hash, expr_eq> modals;
+        z3::expr_vector relations(ctx());
+        unsigned i = 0;
+
+        while (i < args.size()) {
+            expr arg = args[i];
+            if (arg.is_and()) {
+                // Flatten
+                const unsigned sz = arg.num_args();
+                SASSERT(sz > 1);
+                expr a = arg.arg(0);
+                args.set(i, a);
+                for (unsigned j = 1; j < sz; j++)
+                    args.push_back(arg.arg(j));
+                continue;
             }
-            else if (!args[i].is_true()) {
-                if (last != i) {
-                    expr e = args[i];
-                    expr e2 = args[last];
-                    args.set(i, e2);
-                    args.set(last, e);
+            else if (arg.is_false()) {
+                return ctx().bool_val(false);
+            }
+            else if (arg.is_true()) {
+                REMOVE_ARG(i);
+                continue;
+            }
+            else {
+                bool neg = false;
+                expr test = arg;
+                if (arg.is_not()) {
+                    test = arg.arg(0);
+                    neg = true;
                 }
-                last++;
+                auto it = enc.find(test);
+                if (it == enc.end()) {
+                    enc[test] = neg;
+                    if (!neg && is_widen_modals() && is_box(test.decl())) {
+                        z3::expr r = test.arg(0);
+                        if (!modals[r].has_value()) {
+                            modals[r] = z3::expr_vector(ctx());
+                            relations.push_back(r);
+                        }
+                        modals[r]->push_back(test.arg(1));
+                        REMOVE_ARG(i);
+                        continue;
+                    }
+                }
+                else if (it->second != neg) {
+                    return ctx().bool_val(false);
+                }
+                else {
+                    REMOVE_ARG(i);
+                    continue;
+                }
             }
+            i++;
         }
-        if (last == 0) {
-            m_processed_args.top().push_back(ctx().bool_val(true));
-            return false;
+        // Merge modals again
+        for (const auto& r : relations) {
+            const auto& e = modals[r];
+            SASSERT(e.has_value());
+            z3::expr_vector a = e.value();
+            // rewrite: this won't cascade as we evaluate bottom up:
+            args.push_back(m_decls.box(r, post_rewrite(f, a)));
         }
-        else if (last == 1) {
-            m_processed_args.top().push_back(args[0]);
-            return false;
+        if (args.empty()) {
+            return ctx().bool_val(true);
         }
-        SASSERT(last <= args.size());
-        args.resize(last);
-        m_processed_args.top().push_back(f(args));
-        return true;
+        else if (args.size() == 1) {
+            return args[0];
+        }
+        return f(args);
     }
     if (f.decl_kind() == Z3_OP_OR) {
-        unsigned last = 0;
-        const unsigned sz = args.size();
-        for (unsigned i = 0; i < sz; i++) {
-            if (args[i].is_true()) {
-                m_processed_args.top().push_back(ctx().bool_val(true));
-                return false;
+        std::unordered_map<z3::expr, bool, expr_hash, expr_eq> enc;
+        std::unordered_map<z3::expr, std::optional<expr_vector>, expr_hash, expr_eq> modals;
+        z3::expr_vector relations(ctx());
+        unsigned i = 0;
+
+        while (i < args.size()) {
+            expr arg = args[i];
+            if (arg.is_or()) {
+                // Flatten
+                const unsigned sz = arg.num_args();
+                SASSERT(sz > 1);
+                expr a = arg.arg(0);
+                args.set(i, a);
+                for (unsigned j = 1; j < sz; j++)
+                    args.push_back(arg.arg(j));
+                continue;
             }
-            else if (!args[i].is_false()) {
-                if (last != i) {
-                    expr e = args[i];
-                    expr e2 = args[last];
-                    args.set(i, e2);
-                    args.set(last, e);
+            else if (arg.is_true()) {
+                return ctx().bool_val(true);
+            }
+            else if (arg.is_false()) {
+                REMOVE_ARG(i);
+                continue;
+            }
+            else {
+                bool neg = false;
+                expr test = arg;
+                if (arg.is_not()) {
+                    test = arg.arg(0);
+                    neg = true;
                 }
-                last++;
+                auto it = enc.find(test);
+                if (it == enc.end()) {
+                    enc[test] = neg;
+                    if (neg && is_widen_modals() && is_box(test.decl())) {
+                        z3::expr r = test.arg(0);
+                        if (!modals[r].has_value()) {
+                            modals[r] = z3::expr_vector(ctx());
+                            relations.push_back(r);
+                        }
+                        modals[r]->push_back(test.arg(1));
+                        REMOVE_ARG(i);
+                        continue;
+                    }
+                }
+                else if (it->second != neg) {
+                    return ctx().bool_val(true);
+                }
+                else {
+                    REMOVE_ARG(i);
+                    continue;
+                }
             }
+            i++;
         }
-        if (last == 0) {
-            m_processed_args.top().push_back(ctx().bool_val(false));
-            return false;
+        // Merge modals again
+        for (const auto& r : relations) {
+            const auto& e = modals[r];
+            SASSERT(e.has_value());
+            z3::expr_vector a = e.value();
+            // rewrite: this won't cascade as we evaluate bottom up:
+            // TODO: Overload for rewrite that accepts z3::expr
+            expr processed = z3::mk_and(a);
+            processed = post_rewrite(processed.decl(), a);
+            args.push_back(!m_decls.box(r, processed));
         }
-        else if (last == 1) {
-            m_processed_args.top().push_back(args[0]);
-            return false;
+        if (args.empty()) {
+            return ctx().bool_val(false);
         }
-        SASSERT(last <= args.size());
-        args.resize(last);
-        m_processed_args.top().push_back(f(args));
-        return true;
+        else if (args.size() == 1) {
+            return args[0];
+        }
+        return f(args);
     }
     if (is_modal(f)) {
         SASSERT(is_box(f));
         if (args[1].is_true()) {
-            m_processed_args.top().push_back(ctx().bool_val(true));
-            return false;
+            return ctx().bool_val(true);
         }
-        m_processed_args.top().push_back(f(args));
-        return true;
+        return f(args);
     }
     if (is_global(f)) {
         if (args[0].is_true()) {
-            m_processed_args.top().push_back(ctx().bool_val(true));
-            return false;
+            return ctx().bool_val(true);
         }
-        m_processed_args.top().push_back(f(args));
-        return true;
+        return f(args);
     }
     if (is_local(f)) {
         if (is_placeholder(args[0].decl()))
             throw parse_exception("\"local\" expects a concrete world as 1st argument");
         if (args[1].is_true()) {
-            m_processed_args.top().push_back(ctx().bool_val(true));
-            return false;
+            return ctx().bool_val(true);
         }
-        m_processed_args.top().push_back(f(args));
-        return true;
+        return f(args);
     }
-    m_processed_args.top().push_back(f(args));
-    return true;
+    return f(args);
 }
+
+#undef REMOVE_ARG
 
 expr strategy::simplify(const expr& e) {
     return simplify_formula(e);

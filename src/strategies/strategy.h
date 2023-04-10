@@ -84,13 +84,15 @@ protected:
     virtual bool is_blast_eq() const { return false; }
     virtual bool is_nnf() const { return false; } // TODO: Implement in simplify
     virtual bool is_incremental_parsing() const { return false; }
+    virtual bool is_widen_modals() const { return true; } // (dia F1 || dia F2) ==> dia (F1 || F2)
+    // might increase performance of MBQI!
 
     expr simplify_formula(const expr& e);
     virtual expr create_formula(const expr& e) = 0;
 
     virtual void output_model(const model& model, std::ostream &ostream) = 0;
     
-    bool post_rewrite(const func_decl& f, expr_vector& args);
+    z3::expr post_rewrite(const func_decl& f, expr_vector& args);
     bool pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& current);
 
     virtual check_result solve(const z3::expr& e) { 
