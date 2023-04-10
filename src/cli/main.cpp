@@ -88,12 +88,8 @@ int main(int argc, char** argv) {
         Z3_enable_trace("rewriter_step");
         Z3_enable_trace("elim_unused_vars");*/
         
-        /*z3::set_param("sat.euf", true);
-        z3::set_param("sat.smt", true);
-        z3::config cfg;
-        cfg.set("sat.smt", true);
-        cfg.set("sat.euf", true);
-        z3::context ctx(cfg);*/
+        //z3::set_param("sat.euf", true);
+        //z3::set_param("sat.smt", true);
         z3::context ctx;
         modal_decls decls(ctx.uninterpreted_sort("World"), ctx.uninterpreted_sort("Relation"));
         z3::sort_vector domain(ctx);
@@ -145,7 +141,7 @@ int main(int argc, char** argv) {
             str->set_memout(limit_mem);
         check_result res = str->check(z3::mk_and(parsed));
         str->output_state(std::cout);
-        
+
         if (mode == "upl" && res == z3::sat) {
             if (str->model_check(z3::mk_and(parsed)) != Z3_L_TRUE) {
                 std::cout << "FAILED to check model" << std::endl;
@@ -154,6 +150,21 @@ int main(int argc, char** argv) {
                 std::cout << "SUCCESSFULLY checked model" << std::endl;
             }
         }
+
+#if 0
+        // For comparison
+        standard_translation check(ctx, decls);
+        check_result res_comp = check.check(z3::mk_and(parsed));
+        if (res != res_comp) {
+            std::cerr << "Different results: "
+            << (res == check_result::sat ? "sat" : res == check_result::unsat ? "unsat" : "unknown" )
+            << " vs. "
+            << (res_comp == check_result::sat ? "sat" : res_comp == check_result::unsat ? "unsat" : "unknown" ) << std::endl;
+        }
+        else {
+            std::cout << "Results coincide" << std::endl;
+        }
+#endif
         
         delete str;
     }

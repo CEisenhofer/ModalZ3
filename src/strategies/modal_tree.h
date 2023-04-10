@@ -4,9 +4,9 @@
 
 struct spread_info {
     syntax_tree_node* m_template;
-    expr m_justification;
+    z3::expr m_justification;
 
-    spread_info(syntax_tree_node* temp, const expr& justification) : m_template(temp), m_justification(justification) {}
+    spread_info(syntax_tree_node* temp, const z3::expr& justification) : m_template(temp), m_justification(justification) {}
 };
 
 class modal_tree_node {
@@ -58,41 +58,19 @@ public:
         return m_aux_predicate;
     }
 
-    bool is_assigned(unsigned variable) const {
-        return m_assignment_set.size() > variable && m_assignment_set[variable] != Z3_L_UNDEF;
+    bool is_assigned(unsigned variable) const;
+
+    Z3_lbool get_assignment(unsigned variable) const;
+
+    unsigned get_assignment_cnt() const {
+        return m_assignment_set.size();
     }
 
-    Z3_lbool get_assignment(unsigned variable) const {
-        if (m_assignment_set.size() <= variable)
-            return Z3_L_UNDEF;
-        return m_assignment_set[variable];
-    }
+    void unassign(unsigned variable);
 
-    void unassign(unsigned variable) {
-        SASSERT(is_assigned(variable));
-        assign(variable, Z3_L_UNDEF);
-    }
+    void assign(unsigned variable, bool val);
 
-    void assign(unsigned variable, bool val) {
-        assign(variable, val ? Z3_L_TRUE : Z3_L_FALSE);
-    }
-
-    void assign(unsigned variable, Z3_lbool val) {
-        if (m_assignment_set.size() <= variable) {
-            m_assignment_set.resize(variable + 1);
-        }
-        if (val == Z3_L_UNDEF) {
-            m_assignment_set[variable] = Z3_L_UNDEF;
-            SASSERT(!m_assignment_list.empty());
-            SASSERT(m_assignment_list.back() == variable);
-            // Otw. if we need non-chronological: the set contains additionally the index to the variable in the list
-            // We swap this element with the last element in the list and change the index for the last element accordingly
-            m_assignment_list.pop_back(); 
-            return;
-        }
-        m_assignment_set[variable] = val;
-        m_assignment_list.push_back(variable);
-    }
+    void assign(unsigned variable, Z3_lbool val);
 
     bool is_root() const {
         return m_parent == nullptr;
@@ -102,93 +80,42 @@ public:
         return m_parent;
     }
 
-    void add_spread(const spread_info& info, unsigned relation) {
-        if (m_spread.size() <= relation)
-            m_spread.resize(relation + 1);
-        m_spread[relation].push_back(info);
-    }
+    void add_spread(const spread_info& info, unsigned relation);
 
-    const spread_info& last_spread(unsigned relation) const {
-        SASSERT(m_spread.size() >= relation);
-        SASSERT(!m_spread[relation].empty());
-        return m_spread[relation].back();
-    }
+    const spread_info& last_spread(unsigned relation) const;
 
     unsigned get_spread_relation_cnt() const {
         return m_spread.size();
     }
 
-    const std::vector<spread_info>& get_spread(unsigned relation) {
-        SASSERT(relation < m_existing_children.size());
+    const std::vector<spread_info>& get_spread(unsigned relation) const {
+        SASSERT(relation < m_spread.size());
         return m_spread[relation];
     }
 
-    void add_child(modal_tree_node* node, syntax_tree_node* abs) {
-        unsigned relation = abs->get_relation();
-        if (m_existing_children.size() <= relation)
-            m_existing_children.resize(relation + 1);
-        m_existing_children[relation].push_back(node);
+    void add_child(modal_tree_node* node, syntax_tree_node* abs);
 
-        unsigned id = abs->get_id();
-        if (m_actual_children.size() <= id)
-            m_actual_children.resize(id + 1);
-        m_actual_children[id] = node;
-    }
-
-    const modal_tree_node* last_child(unsigned relation) const {
-        SASSERT(m_existing_children.size() >= relation);
-        SASSERT(!m_existing_children[relation].empty());
-        return m_existing_children[relation].back();
-    }
+    const modal_tree_node* last_child(unsigned relation) const;
 
     unsigned get_child_relations_cnt() const {
         return m_existing_children.size();
     }
 
-    modal_tree_node* get_created_child(syntax_tree_node* abs) {
-        unsigned id = abs->get_id();
-        if (id >= m_actual_children.size())
-            return nullptr;
-        return m_actual_children[id];
-    }
+    modal_tree_node* get_created_child(syntax_tree_node* abs);
 
     const std::vector<modal_tree_node*>& get_children(unsigned relation) const {
         SASSERT(relation < m_existing_children.size());
         return m_existing_children[relation];
     }
 
-    void remove_and_delete_last_child(unsigned relation) {
-        SASSERT(m_existing_children.size() >= relation);
-        SASSERT(!m_existing_children[relation].empty());
-        // delete m_existing_children[relation].back();
-        m_existing_children[relation].pop_back();
-    }
+    void remove_and_delete_last_child(unsigned relation);
 
-    void remove_last_spread(unsigned relation) {
-        SASSERT(m_spread.size() >= relation);
-        SASSERT(!m_spread[relation].empty());
-        m_spread[relation].pop_back();
-    }
+    void remove_last_spread(unsigned relation);
     
-    bool is_blocked() {
-        modal_tree_node* parent = this;
-        while ((parent = parent->get_parent()) != nullptr) {
-            // subset
-            for (unsigned v : m_assignment_list) {
-                Z3_lbool tval = this->get_assignment(v);
-                if (tval != Z3_L_UNDEF) {
-                    if (tval != parent->get_assignment(v))
-                        goto failed;
-                }
-            }
-            m_blocked_by = parent;
-            return true;
-            failed:
-            ;
-        }
-        return false;
-    }
+    bool is_blocked();
 };
+
+std::ostream& operator<<(std::ostream& os, const modal_tree_node& w);
 
 class modal_tree {
     
@@ -212,29 +139,11 @@ public:
         return m_existing_nodes[0];
     }
 
-    sort get_world_sort() const {
+    z3::sort get_world_sort() const {
         return m_syntax->get_world_sort();
     }
     
-    modal_tree_node* get_or_create_node(syntax_tree_node* abs, modal_tree_node* parent, const z3::expr& aux_predicate) {
-        modal_tree_node* node = nullptr;
-        z3::expr world_constant = z3::expr(m_ctx);
-        if (parent && (node = parent->get_created_child(abs))) {
-            world_constant = node->world_constant();
-            LOG("Recreated: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
-        }
-        else {
-            world_constant = z3::expr(m_ctx, Z3_mk_fresh_const(m_ctx, "world", get_world_sort()));
-            node = new modal_tree_node(m_existing_nodes.size(), abs, parent, world_constant, aux_predicate);
-            LOG("Creating: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
-            m_expr_to_node[world_constant] = node;
-            m_actual_nodes.push_back(node);
-        }
-        if (parent)
-            parent->add_child(node, abs);
-        m_existing_nodes.push_back(node);
-        return node;
-    }
+    modal_tree_node* get_or_create_node(syntax_tree_node* abs, modal_tree_node* parent, const z3::expr& aux_predicate);
     
     ~modal_tree() {
         for (unsigned i = 0; i < m_actual_nodes.size(); i++)
@@ -259,12 +168,8 @@ public:
         return m_existing_nodes;
     };
 
-    void remove_last_child(unsigned relation) {
-        // We delete the world from the model but keep the data-structure
-        SASSERT(m_existing_nodes.size() > 1);
-        //m_expr_to_node.erase(m_nodes.back()->world_constant());
-        m_existing_nodes.back()->get_parent()->remove_and_delete_last_child(relation);
-        m_existing_nodes.pop_back();
-    }
+    void remove_last_child(unsigned relation);
     
 };
+
+std::ostream& operator<<(std::ostream& os, const modal_tree& m);

@@ -5,7 +5,3 @@
 (assert
     (or (not (box r1 (box r1 (or (not (p world)) (p world))))) (p world))
 )
-
-; (assert
-;     (p world)
-; )

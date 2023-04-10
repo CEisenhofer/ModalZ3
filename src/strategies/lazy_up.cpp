@@ -32,8 +32,8 @@ void removed_init_info_undo::undo() {
 }
 
 void log_clause(expr const& proof, expr_vector const& clause) {
-    LOG("Proof: " << proof);
-    LOG("Clause: " << clause);
+    //LOG("Proof: " << proof);
+    //LOG("Clause: " << clause);
 }
 
 void lazy_up::propagate_to(modal_tree_node* new_world, unsigned relation) {
@@ -43,8 +43,8 @@ void lazy_up::propagate_to(modal_tree_node* new_world, unsigned relation) {
         return;
     for (const auto& box : parent->get_spread(relation)) {
         expr e = box.m_template->initialize(new_world->world_constant(), true);
-        propagate(new_world->aux_predicate(), box.m_justification,  e);
         LOG("Propagating (SP): " << !new_world->aux_predicate() << " && " << box.m_justification << " => " << e);
+        propagate(new_world->aux_predicate(), box.m_justification,  e);
     }
 }
 
@@ -53,8 +53,8 @@ void lazy_up::propagate_from(syntax_tree_node* temp, modal_tree_node* parent, un
         return;
     for (const auto& child : parent->get_children(relation)) {
         expr e = temp->initialize(child->world_constant(), true);
-        propagate(child->aux_predicate(), justification, e);
         LOG("Propagating (SP): " << !child->aux_predicate() << " && " << justification  << " => " << e);
+        propagate(child->aux_predicate(), justification, e);
     }
 }
 
@@ -294,6 +294,7 @@ void lazy_up::push() {
 }
 
 void lazy_up::pop(unsigned num_scopes) {
+    LOG("Undoing current state:\n" << *m_modal_tree << "\n");
     SASSERT(m_trail_sz.size() >= num_scopes);
     unsigned old_sz = m_trail_sz[m_trail_sz.size() - num_scopes];
     m_trail_sz.resize(m_trail_sz.size() - num_scopes);
@@ -317,7 +318,7 @@ void lazy_up::fixed(const expr& e, const expr& value) {
     modal_tree_node* world = m_modal_tree->get(arg);
     unsigned var = get_variable(e.decl());
     SASSERT(var != -1);
-    SASSERT(!world->is_assigned(var));
+    //SASSERT(!world->is_assigned(var));
     world->assign(var, v);
     add_trail(new assignment_undo(world, var));
 
@@ -326,18 +327,28 @@ void lazy_up::fixed(const expr& e, const expr& value) {
         m_to_init.push_back(init_info(abs, world, e, v));
         add_trail(new added_init_info_undo(m_to_init, m_to_init.back()));
     }
+
+    //if (m_trail_sz.empty()) // Root level; we won't have to revert them
+        // For some reason Z3 tends otw. to set consequences as irrelevant...
+    //    final();
 }
+
+static int final_checks = 0;
 
 void lazy_up::final() {
     try {
-        LOG("Final check");
+        if (m_trail_sz.empty())
+            LOG("Eager check: " << ++final_checks);
+        else
+            LOG("Final check: " << ++final_checks);
+        LOG("Current state: " << *m_modal_tree << "\n");
         // TODO: First negative; then positive [performance reasons] (we then now already where to spread to)
         // TODO: Delay box evaluation
-        unsigned last = 0;
-        for (unsigned i = 0; i < m_to_init.size(); i++) {
-            const auto& to_init = m_to_init[i];
+        unsigned last = m_to_init.size();
+        for (unsigned i = m_to_init.size(); i > 0; i--) {
+            const auto& to_init = m_to_init[i - 1];
             if (to_init.m_parent->is_blocked()) { // TODO: Cache!
-                m_to_init[last++] = m_to_init[i];
+                m_to_init[--last] = m_to_init[i - 1];
                 //LOG("World w" + std::to_string(to_init.m_parent->get_id()) + " blocked by w" + std::to_string(to_init.m_parent->blocked_by()->get_id()));
                 continue;
             }
@@ -364,7 +375,7 @@ void lazy_up::final() {
                 propagate_from(to_init.m_template, to_init.m_parent, relation, to_init.just());
             }
         }
-        m_to_init.resize(last);
+        m_to_init.resize(m_to_init.size() - last);
     }
     catch (const exception& e) {
         if (strcmp(e.msg(), "canceled") != 0) {
@@ -378,6 +389,9 @@ void lazy_up::created(const expr& e) {
 }
 
 void lazy_up::decide(expr& e, unsigned& bit, Z3_lbool& val) {
+    // TODO: Apply an initial "final"-call before the first push
+    // TODO: Prefer having either all modalities positive/negative (slight preference for positive)
+    // as number of propagations = (|Boxes| + 1) * |Diamonds|
     LOG("Splitting " << e << " = " << (val == Z3_L_TRUE ? "true" : "false"));
 }
 

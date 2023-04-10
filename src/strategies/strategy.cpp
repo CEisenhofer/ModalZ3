@@ -33,7 +33,8 @@ bool strategy::is_ml_interpreted(const func_decl& decl) const {
 
 strategy::strategy(context& ctx, const modal_decls& decls) :
     m_ctx(ctx), m_solver(m_ctx), m_syntax_tree(nullptr), m_last_result(z3::unknown),
-    m_decls(decls), m_uf_list(ctx), m_relation_list(ctx), m_solving_time() {}
+    m_decls(decls), m_uf_list(ctx), m_relation_list(ctx), m_solving_time() {
+}
 
 
 expr strategy::simplify_formula(const expr& e) {
@@ -249,7 +250,7 @@ check_result strategy::check(expr e) {
     e = simplify_formula(e); // we need to call this to collect uf/relation information [maybe separate later]
     LOG2("\nProcessed:\n" << e << "\n");
     e = create_formula(e);
-    LOG("Adding: " << e << "\n");
+    LOG("SMT formula: " << e << "\n");
     m_is_solving = true;
     if (!m_is_benchmark) {
         try {

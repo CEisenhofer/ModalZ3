@@ -34,7 +34,7 @@ check_result iterative_deepening_unrolled::solve(const expr& e) {
 }
 
 // TODO non-recursive version
-expr iterative_deepening_unrolled::unroll(const expr &e, unsigned world) {
+expr iterative_deepening_unrolled::unroll(const expr& e, unsigned world) {
     if (e.is_app()) {
         const func_decl &decl = e.decl();
         if (is_placeholder(decl))
@@ -74,8 +74,9 @@ expr iterative_deepening_unrolled::unroll(const expr &e, unsigned world) {
     }
     else {
         std::cerr << e << std::endl;
-        assert(false);
+        SASSERT(false);
     }
+    return expr(ctx());
 }
 
 expr iterative_deepening_unrolled::unroll_and_cache(const expr &e, unsigned world) {
