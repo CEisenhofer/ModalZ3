@@ -474,15 +474,19 @@ Z3_lbool lazy_up::model_check(const expr& e) {
             // Prop. variables
             to_process.pop();
             if (current.original_expr.num_args() > 0 && z3::eq(f.domain(0), m_decls.world_sort)) {
-                SASSERT(m_orig_uf_to_new_uf.contains(f));
-                unsigned vid = get_variable(*(m_orig_uf_to_new_uf[f]));
-                SASSERT(vid != -1);
-                if (!current.world->is_assigned(vid)) {
-                    //to_process.top().args.push_back(current.original_expr);
-                    to_process.top().args.push_back(m_ctx.bool_val(false)); // completion to please MC
+                if (m_orig_uf_to_new_uf.contains(f)) {
+                    unsigned vid = get_variable(*(m_orig_uf_to_new_uf[f]));
+                    SASSERT(vid != -1);
+                    if (!current.world->is_assigned(vid)) {
+                        //to_process.top().args.push_back(current.original_expr);
+                        to_process.top().args.push_back(m_ctx.bool_val(false)); // completion to please MC
+                    }
+                    else {
+                        to_process.top().args.push_back(ctx().bool_val(current.world->get_assignment(vid) == Z3_L_TRUE));
+                    }
                 }
                 else {
-                    to_process.top().args.push_back(ctx().bool_val(current.world->get_assignment(vid) == Z3_L_TRUE));
+                    to_process.top().args.push_back(m_ctx.bool_val(false)); // the preprocessor might have remove whole declarations
                 }
             }
             else {
