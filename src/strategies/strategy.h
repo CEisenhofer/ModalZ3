@@ -15,31 +15,18 @@ using namespace z3;
 struct modal_decls {
     sort world_sort, relation_sort;
     func_decl dia, box;
-    func_decl local, global;
+    func_decl global;
     func_decl placeholder;
     
     modal_decls(const sort& world_sort, const sort& relation_sort) :
         world_sort(world_sort), relation_sort(relation_sort),
         dia(world_sort.ctx()), box(world_sort.ctx()),
-        local(world_sort.ctx()), global(world_sort.ctx()),
+        global(world_sort.ctx()),
         placeholder(world_sort.ctx()) {}
         
-    z3::sort_vector get_sorts() {
-        z3::sort_vector sorts(world_sort.ctx());
-        sorts.push_back(world_sort);
-        sorts.push_back(relation_sort);
-        return sorts;
-    }
-    
-    z3::func_decl_vector get_decls() {
-        z3::func_decl_vector functions(world_sort.ctx());
-        functions.push_back(box);
-        functions.push_back(dia);
-        functions.push_back(local);
-        functions.push_back(global);
-        functions.push_back(placeholder);
-        return functions;
-    }
+    z3::sort_vector get_sorts();
+    z3::func_decl_vector get_decls();
+    static modal_decls create_default(z3::context& ctx);
 };
 
 class strategy {
@@ -75,7 +62,6 @@ protected:
     bool is_box(const func_decl& decl) const;
     bool is_dia(const func_decl& decl) const;
     bool is_placeholder(const func_decl& decl) const;
-    bool is_local(const func_decl& decl) const;
     bool is_global(const func_decl& decl) const;
     bool is_ml_interpreted(const func_decl& decl) const;
     

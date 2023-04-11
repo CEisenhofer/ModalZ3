@@ -91,20 +91,7 @@ int main(int argc, char** argv) {
         //z3::set_param("sat.euf", true);
         //z3::set_param("sat.smt", true);
         z3::context ctx;
-        modal_decls decls(ctx.uninterpreted_sort("World"), ctx.uninterpreted_sort("Relation"));
-        z3::sort_vector domain(ctx);
-        func_decl placeholder = ctx.function("world", domain, decls.world_sort);
-        decls.placeholder = placeholder;
-        domain.push_back(decls.relation_sort);
-        domain.push_back(ctx.bool_sort());
-        decls.dia = ctx.function("dia", domain, ctx.bool_sort());
-        decls.box = ctx.function("box", domain, ctx.bool_sort());
-        
-        domain.pop_back();
-        domain.push_back(decls.world_sort);
-        domain.push_back(ctx.bool_sort());
-        decls.local = ctx.function("local", domain, ctx.bool_sort());
-        decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort());
+        modal_decls decls = modal_decls::create_default(ctx);
         
         z3::expr_vector parsed = z3::expr_vector(ctx);
         try {
@@ -116,7 +103,7 @@ int main(int argc, char** argv) {
         }
     
         auto id  = [&decls](z3::context& ctx) { return new iterative_deepening_quant(ctx, decls); };
-        auto id2  = [&decls](z3::context& ctx) { return new iterative_deepening_unrolled(ctx, decls); };
+        auto id2 = [&decls](z3::context& ctx) { return new iterative_deepening_unrolled(ctx, decls); };
         auto std = [&decls](z3::context& ctx) { return new standard_translation(ctx, decls); };
         auto upl = [&decls](z3::context& ctx) { return new lazy_up(ctx, decls); };
     

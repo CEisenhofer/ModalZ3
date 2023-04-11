@@ -20,22 +20,9 @@ unsigned cnt_str(const std::string& s, const std::string& target) {
 }
 
 void test() {
-    context ctx;
 
-    modal_decls decls(ctx.uninterpreted_sort("World"), ctx.uninterpreted_sort("Relation"));
-    z3::sort_vector domain(ctx);
-    func_decl placeholder = ctx.function("world", domain, decls.world_sort);
-    decls.placeholder = placeholder;
-    domain.push_back(decls.relation_sort);
-    domain.push_back(ctx.bool_sort());
-    decls.dia = ctx.function("dia", domain, ctx.bool_sort());
-    decls.box = ctx.function("box", domain, ctx.bool_sort());
-    
-    domain.pop_back();
-    domain.push_back(decls.world_sort);
-    domain.push_back(ctx.bool_sort());
-    decls.local = ctx.function("local", domain, ctx.bool_sort());
-    decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort());
+    context ctx;
+    modal_decls decls = modal_decls::create_default(ctx);
 
     //std::vector<int> world_cnt[3]; // some statistics
     unsigned world_cnt[3]; // some statistics
