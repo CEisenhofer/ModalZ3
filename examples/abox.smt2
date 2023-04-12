@@ -1,5 +1,7 @@
 (declare-fun p (World) Bool)
 (declare-fun q (World) Bool)
+(declare-fun r () Bool)
+(declare-fun s () Bool)
 (declare-const w1 World)
 (declare-const w2 World)
 (declare-const r1 Relation)
@@ -8,6 +10,7 @@
 (assert (and (global (=> (= world w1) (q world))))) ; w1 [q],
 (assert (and (p w1) (p w2))) ; w1/w2 [p]
 (assert (dia r1 (not (p world)))) ; w? -> w? [!p]
+(assert (or r s))
 
 ; Expected model:
 ; Initial world -> w? [!p]

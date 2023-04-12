@@ -15,6 +15,7 @@ z3::func_decl_vector modal_decls::get_decls() {
     functions.push_back(box);
     functions.push_back(dia);
     functions.push_back(global);
+    functions.push_back(reachable);
     functions.push_back(placeholder);
     return functions;
 }
@@ -32,6 +33,14 @@ modal_decls modal_decls::create_default(context & ctx) {
     decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort());
     decls.reachable = ctx.function("reachable", decls.relation_sort, decls.world_sort, decls.world_sort, ctx.bool_sort());
     return decls;
+}
+
+bool strategy::is_world(const sort& s) const {
+    return z3::eq(s, m_decls.world_sort);
+}
+
+bool strategy::is_relation(const sort& s) const {
+    return z3::eq(s, m_decls.relation_sort);
 }
 
 bool strategy::is_modal(const func_decl& decl) const {
@@ -191,6 +200,7 @@ z3::expr strategy::post_rewrite(const func_decl& f, expr_vector& args) {
 
         while (i < args.size()) {
             expr arg = args[i];
+            LOG("Simplify " << (is_and ? "and" : "or") << " argument: " << arg);
             if ((is_and && arg.is_and()) || (!is_and && arg.is_or())) {
                 // Flatten
                 const unsigned sz = arg.num_args();
@@ -204,7 +214,7 @@ z3::expr strategy::post_rewrite(const func_decl& f, expr_vector& args) {
             else if ((is_and && arg.is_false()) || (!is_and && arg.is_true())) {
                 return ctx().bool_val(!is_and);
             }
-            else if ((is_and && arg.is_and()) || (!is_and && arg.is_false())) {
+            else if ((is_and && arg.is_true()) || (!is_and && arg.is_false())) {
                 REMOVE_ARG(i);
                 continue;
             }
@@ -331,5 +341,6 @@ void strategy::output_state(std::ostream& ostream) {
             ostream << "UNKNOWN:\n\t" << m_solver.reason_unknown() << "\n";
             break;
     }
+    ostream << "\n";
     std::flush(ostream);
 }

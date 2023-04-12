@@ -285,12 +285,15 @@ expr lazy_up::create_formula(const expr& e) {
                 }
                 m_processed_args.pop();
 
-                if (app.decl.decl_kind() == Z3_OP_UNINTERPRETED && !z3::eq(app.decl.range(), m_decls.world_sort) && !z3::eq(app.decl.range(), m_decls.relation_sort)) {
-                    // for now: always flexible interpretation
-                    sort_vector domain(m_ctx);
+                if (app.decl.decl_kind() == Z3_OP_UNINTERPRETED && !is_world(app.decl.range()) && !is_relation(app.decl.range())) {
+                   sort_vector domain(m_ctx);
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
-                    if (!args.empty() && z3::eq(args[0].get_sort(), m_decls.world_sort)) {
+                    if (args.empty() || !is_world(args[0].get_sort())) {
+                        // For now, we don't care about rigid functions. We don't even want to observe them
+                        m_processed_args.top().push_back(m_ctx.function(app.decl.name(), domain, app.decl.range())(args));
+                    }
+                    else {
                         if (!app.no_scope && !is_placeholder(args[0].decl())) {
                             throw parse_exception("Non-\"world\" constants only outside of modal operators for now: " + current.e.to_string());
                         }
@@ -303,20 +306,20 @@ expr lazy_up::create_formula(const expr& e) {
                             args.set(0, ast);
                             m_modal_tree->get_or_create_named_node(ast);
                         }
-                    }
-                    bool is_up = app.decl.range().is_bool() || app.decl.range().is_bv();
-                    func_decl new_func = is_up
-                            ? m_ctx.user_propagate_function(app.decl.name(), domain, app.decl.range())
-                            : m_ctx.function(app.decl.name(), domain, app.decl.range());
-                    
-                    m_processed_args.top().push_back(new_func(args));
-                    if (!m_uf_set.contains(new_func)) {
-                        LOG("Adding: " << new_func.name().str());
-                        m_orig_uf_to_new_uf[app.decl] = new_func;
-                        m_uf_list.push_back(new_func);
-                        m_uf_set.insert(new_func);
-                        if (is_up)
-                            m_uf_to_id[new_func] = m_uf_to_id.size();
+                        bool is_up = app.decl.range().is_bool() || app.decl.range().is_bv();
+                        func_decl new_func = is_up
+                                ? m_ctx.user_propagate_function(app.decl.name(), domain, app.decl.range())
+                                : m_ctx.function(app.decl.name(), domain, app.decl.range());
+
+                        m_processed_args.top().push_back(new_func(args));
+                        if (!m_uf_set.contains(new_func)) {
+                            LOG("Adding: " << new_func.name().str());
+                            m_orig_uf_to_new_uf[app.decl] = new_func;
+                            m_uf_list.push_back(new_func);
+                            m_uf_set.insert(new_func);
+                            if (is_up)
+                                m_uf_to_id[new_func] = m_uf_to_id.size();
+                        }
                     }
                 }
                 else
@@ -372,7 +375,7 @@ void lazy_up::fixed(const expr& e, const expr& value) {
     func_decl func = e.decl();
     SASSERT(func.arity() > 0);
     expr arg = e.arg(0);
-    SASSERT(z3::eq(arg.get_sort(), m_decls.world_sort));
+    SASSERT(is_world(arg.get_sort()));
     modal_tree_node* world = m_modal_tree->get(arg);
     SASSERT(world);
     unsigned var = get_variable(e.decl());
@@ -485,12 +488,10 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
             if (n->get_child_relations_cnt() <= ri)
                 continue;
             for (modal_tree_node* child : n->get_children(ri)) {
-                if (child->blocked_by()) {
+                if (child->blocked_by())
                     ostream << "\t" << id_to_name.at(n->get_id()) << " -> " << id_to_name.at(child->blocked_by()->get_id()) << " [blocked]" << "\n";
-                }
-                else {
+                else
                     ostream << "\t" << id_to_name.at(n->get_id()) << " -> " << id_to_name.at(child->get_id()) << "\n";
-                }
             }
         }
         ri++;
@@ -518,6 +519,19 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
             }
             ostream << "\n";
         }
+    }
+    ostream << "Non-Modal functions:\n";
+    unsigned sz = model.num_consts();
+    for (unsigned i = 0; i < sz; i++) {
+        z3::func_decl f = model.get_const_decl(i);
+        if (!is_world(f.range()) && !is_relation(f.range()))
+            ostream << f << ": " << model.get_func_interp(f) << "\n";
+    }
+    sz = model.num_funcs();
+    for (unsigned i = 0; i < sz; i++) {
+        z3::func_decl f = model.get_func_decl(i);
+        if (!is_world(f.range()) && !is_relation(f.range()) && (f.arity() == 0 || is_world(f.domain(0))))
+            ostream << f << ": " << model.get_func_interp(f) << "\n";
     }
 }
 
@@ -556,7 +570,7 @@ Z3_lbool lazy_up::model_check(const expr& e) {
         if (!ml && !global && kind == Z3_OP_UNINTERPRETED) {
             // Prop. variables
             to_process.pop();
-            if (current.original_expr.num_args() > 0 && z3::eq(f.domain(0), m_decls.world_sort)) {
+            if (current.original_expr.num_args() > 0 && is_world(f.domain(0))) {
                 if (m_orig_uf_to_new_uf.contains(f)) {
                     unsigned vid = get_variable(*(m_orig_uf_to_new_uf[f]));
                     SASSERT(vid != -1);
@@ -582,7 +596,7 @@ Z3_lbool lazy_up::model_check(const expr& e) {
             }
             continue;
         }
-        else if (kind == Z3_OP_EQ && z3::eq(current.original_expr.arg(0).decl().range(), m_decls.world_sort)) {
+        else if (kind == Z3_OP_EQ && is_world(current.original_expr.arg(0).decl().range())) {
             to_process.pop();
             z3::expr lhs = current.original_expr.arg(0);
             z3::expr rhs = current.original_expr.arg(1);
