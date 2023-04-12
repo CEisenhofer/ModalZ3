@@ -525,7 +525,7 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
     for (unsigned i = 0; i < sz; i++) {
         z3::func_decl f = model.get_const_decl(i);
         if (!is_world(f.range()) && !is_relation(f.range()))
-            ostream << f << ": " << model.get_func_interp(f) << "\n";
+            ostream << f << ": " << model.get_const_interp(f) << "\n";
     }
     sz = model.num_funcs();
     for (unsigned i = 0; i < sz; i++) {
