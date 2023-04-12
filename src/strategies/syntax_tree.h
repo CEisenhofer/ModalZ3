@@ -88,7 +88,7 @@ public:
         return m_relation;
     }
 
-    z3::expr initialize(const z3::expr& world, bool positive) const;
+    z3::expr instantiate(const z3::expr& world, bool positive) const;
 
     std::string to_string() const;
     std::string aux_to_string() const;

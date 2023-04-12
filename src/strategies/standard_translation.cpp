@@ -32,6 +32,7 @@ expr standard_translation::create_formula(const expr& e) {
         for (unsigned i = current.e.num_args(); i > 0; i--) {
             expr_info info2(current.e.arg(i - 1));
             info2.top_level = current.top_level && current.decl.decl_kind() == Z3_OP_AND;
+            info2.no_scope = current.no_scope && !is_ml_interpreted(current.decl);
             expr_to_process.push(info2);
         }
 

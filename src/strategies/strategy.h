@@ -16,12 +16,14 @@ struct modal_decls {
     sort world_sort, relation_sort;
     func_decl dia, box;
     func_decl global;
+    func_decl reachable;
     func_decl placeholder;
     
     modal_decls(const sort& world_sort, const sort& relation_sort) :
         world_sort(world_sort), relation_sort(relation_sort),
         dia(world_sort.ctx()), box(world_sort.ctx()),
         global(world_sort.ctx()),
+        reachable(world_sort.ctx()),
         placeholder(world_sort.ctx()) {}
         
     z3::sort_vector get_sorts();
@@ -63,6 +65,7 @@ protected:
     bool is_dia(const func_decl& decl) const;
     bool is_placeholder(const func_decl& decl) const;
     bool is_global(const func_decl& decl) const;
+    bool is_reachable(const func_decl& decl) const;
     bool is_ml_interpreted(const func_decl& decl) const;
     
     strategy(context& ctx, const modal_decls& decls);

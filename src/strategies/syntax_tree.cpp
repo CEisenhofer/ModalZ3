@@ -22,7 +22,7 @@ syntax_tree_node* syntax_tree_node::get_child_by_expr(const z3::expr & e) const 
     return it->second;
 }
 
-z3::expr syntax_tree_node::initialize(const z3::expr & world, bool positive) const {
+z3::expr syntax_tree_node::instantiate(const z3::expr & world, bool positive) const {
     SASSERT((z3::ast)m_template);
     SASSERT(world.num_args() == 0);
     z3::expr_vector arg(world.ctx());

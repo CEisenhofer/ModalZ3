@@ -3,6 +3,8 @@
 #include "lazy_up.h"
 #include "parse_exception.h"
 
+#define ERROR_ABOX throw parse_exception("ABoxes have to be of the form \"global((x = w1 || ... |x = wn) => F)\"")
+
 std::ostream& operator<<(std::ostream& os, undo_trail* undo) {
     undo->output(os);
     return os;
@@ -42,7 +44,7 @@ void lazy_up::propagate_to(modal_tree_node* new_world, unsigned relation) {
     if (relation >= parent->get_spread_relation_cnt())
         return;
     for (const auto& box : parent->get_spread(relation)) {
-        expr e = box.m_template->initialize(new_world->world_constant(), true);
+        expr e = box.m_template->instantiate(new_world->world_constant(), true);
         LOG("Propagating (SP): " << !new_world->aux_predicate() << " && " << box.m_justification << " => " << e);
         propagate(new_world->aux_predicate(), box.m_justification,  e);
     }
@@ -52,18 +54,16 @@ void lazy_up::propagate_from(syntax_tree_node* temp, modal_tree_node* parent, un
     if (relation >= parent->get_child_relations_cnt())
         return;
     for (const auto& child : parent->get_children(relation)) {
-        expr e = temp->initialize(child->world_constant(), true);
+        expr e = temp->instantiate(child->world_constant(), true);
         LOG("Propagating (SP): " << !child->aux_predicate() << " && " << justification  << " => " << e);
         propagate(child->aux_predicate(), justification, e);
     }
 }
 
 void lazy_up::apply_unconstrained(modal_tree_node* world) {
-    z3::expr_vector args(ctx());
-    args.push_back(world->world_constant());
-    for (syntax_tree_node* n : m_unconstraint_global) {
+    for (syntax_tree_node* n : m_global) {
         LOG("Unconditional constraint: " + n->get_template(true).to_string() + " to world " + world->world_constant().to_string());
-        propagate(world->aux_predicate(), n->get_template(true).substitute(args));
+        propagate(world->aux_predicate(), n->instantiate(world->world_constant(), true));
     }
 }
 
@@ -84,12 +84,92 @@ unsigned lazy_up::get_or_create_variable(const func_decl& decl) {
     return id;
 }
 
-void lazy_up::add_constraint(const func_decl & var, bool neg, syntax_tree_node* rhs) {
-    unsigned id = get_or_create_variable(var);
-    for (unsigned i = m_unconstraint_global.size(); i < 2 * (id + 1); i++) {
-        m_constraint_global.emplace_back();
+void lazy_up::try_global_to_local() {
+    unsigned i = 0;
+    unsigned sz = m_global.size();
+    while (i < sz) {
+        if (try_apply_local(m_global[i]))
+            m_global[i] = m_global[--sz];
+        else
+            i++;
     }
-    m_constraint_global[2 * id + neg].push_back(rhs);
+    // TODO: We could now delete the node in the syntax tree
+    //  [However, this is not really easy because of the way the are stored (the id = position in the list) ...]
+
+    m_global.resize(sz);
+}
+
+bool lazy_up::try_apply_local(syntax_tree_node* abs) {
+
+    z3::expr e = abs->get_template(true);
+    SASSERT(!e.is_implies());
+#define ADD_WORLD(X) do {                                                                   \
+                    e = (X);                                                                \
+                    if (is_placeholder(e.arg(0).decl()) == is_placeholder(e.arg(1).decl())) \
+                        ERROR_ABOX;                                                              \
+                    if (is_placeholder(e.arg(0).decl()))                                    \
+                        worlds.push_back(e.arg(1));                                         \
+                    else                                                                    \
+                        worlds.push_back(e.arg(0));                                         \
+                    } while (false)
+
+    LOG("Trying to convert global " << e << " to abox");
+
+    if (!e.is_or() || e.num_args() < 2)
+        return false;
+
+    expr_vector worlds(m_ctx);
+    expr_vector args = e.args();
+    const unsigned sz = args.size();
+    unsigned i = 0;
+    for (; i < sz; i++) {
+        expr arg = args[i];
+        if (arg.is_not()) {
+            arg = arg.arg(0);
+            if (arg.is_eq()) {
+                ADD_WORLD(arg);
+                break;
+            }
+            else if (arg.is_or() && arg.arg(0).is_eq()) {
+                ADD_WORLD(arg.arg(0));
+                for (int j = 1; j < arg.num_args(); j++) {
+                    if (!arg.arg(j).is_eq())
+                        ERROR_ABOX;
+                    ADD_WORLD(arg.arg(j));
+                }
+                break;
+            }
+        }
+        else if (arg.is_and() && arg.arg(0).is_not() && arg.arg(0).arg(0).is_eq()) {
+            worlds.push_back(arg.arg(0).arg(0));
+            for (int j = 1; j < arg.num_args(); j++) {
+                if (!arg.arg(j).is_not() || !arg.arg(j).arg(0).is_eq())
+                    ERROR_ABOX;
+                ADD_WORLD(arg.arg(j).arg(0));
+            }
+            break;
+        }
+    }
+
+    if (i == args.size())
+        return false;
+
+    e = args[args.size() - 1];
+    args.set(i, e);
+    args.resize(args.size() - 1);
+    abs->set_template(args.size() == 1 ? args[0] : z3::mk_or(args));
+
+    if (get_logging()) {
+        LOG("Extracted ABox " << abs->get_template(true) << " for ");
+        for (const auto& w : worlds)
+            LOG("World " << w);
+    }
+
+    for (const auto& w : worlds) {
+        m_modal_tree->get_or_create_named_node(w);
+        propagate(m_ctx.bool_val(true), abs->instantiate(w, true));
+    }
+    return true;
 }
 
 expr lazy_up::create_formula(const expr& e) {
@@ -97,9 +177,13 @@ expr lazy_up::create_formula(const expr& e) {
     std::stack<expr_info> subformulas_to_process;
     expr_info info(e);
     info.top_level = true;
+    info.no_scope = true;
 
     m_syntax_tree = new syntax_tree(this);
     info.world = m_syntax_tree->get_root();
+
+    delete m_modal_tree;
+    m_modal_tree = new modal_tree(m_syntax_tree);
 
     subformulas_to_process.push(info);
 
@@ -148,6 +232,8 @@ expr lazy_up::create_formula(const expr& e) {
                     current.e = current.e.arg(1);
                     current.decl = current.e.decl();
                     current.arity = current.e.num_args();
+                    current.top_level = false;
+                    current.no_scope = false;
                     LOG("Pushing: " << current.e.to_string());
                     subformulas_to_process.push(current);
                 }
@@ -162,24 +248,15 @@ expr lazy_up::create_formula(const expr& e) {
                 syntax_tree_node* new_node = m_syntax_tree->create_node(current.e);
                 current.world = new_node;
                 LOG("New global constraint: " << new_node->get_id());
-                expr lhs = current.e.arg(0);
-                expr rhs = current.e.arg(1);
-                current.e = rhs;
-                current.decl = rhs.decl();
-                current.arity = rhs.num_args();
-                LOG("Pushing: " << lhs.to_string() << " |= " << rhs.to_string());
+                expr constr = current.e.arg(0);
+                current.e = constr;
+                current.decl = constr.decl();
+                current.arity = constr.num_args();
+                current.top_level = false;
+                current.no_scope = false;
+                LOG("Global: " << constr.to_string());
                 subformulas_to_process.push(current);
-                if (lhs.is_true()) {
-                    add_unconstraint(new_node);
-                }
-                else {
-                    bool neg = lhs.is_not();
-                    if (neg)
-                        lhs = lhs.arg(0);
-                    if (lhs.decl().decl_kind() != Z3_OP_UNINTERPRETED || lhs.num_args() != 1 || !z3::eq(lhs.arg(0).get_sort(), m_decls.world_sort) || !z3::eq(lhs.arg(0).get_sort(), m_decls.placeholder))
-                        throw parse_exception("For now, the lhs of \"global\" must be a generalized propositional variable");
-                    add_constraint(lhs.decl(), neg, new_node);
-                }
+                add_global(new_node);
                 m_processed_args.top().push_back(ctx().bool_val(true));
             }
             else {
@@ -187,6 +264,7 @@ expr lazy_up::create_formula(const expr& e) {
                     expr_info info2(current.e.arg(i - 1));
                     info2.world = current.world;
                     info2.top_level = current.top_level && current.decl.decl_kind() == Z3_OP_AND;
+                    info2.no_scope = current.no_scope;
                     expr_to_process.push(info2);
                 }
 
@@ -213,11 +291,18 @@ expr lazy_up::create_formula(const expr& e) {
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
                     if (!args.empty() && z3::eq(args[0].get_sort(), m_decls.world_sort)) {
-                        if (!is_placeholder(args[0].decl())) {
-                            throw parse_exception("Currently not supporting ABox/complex world terms: " + current.e.to_string());
+                        if (!app.no_scope && !is_placeholder(args[0].decl())) {
+                            throw parse_exception("Non-\"world\" constants only outside of modal operators for now: " + current.e.to_string());
                         }
-                        auto ast = (z3::ast)z3::expr(ctx(), Z3_mk_bound(ctx(), 0, m_decls.world_sort));
-                        args.set(0, ast); // replace by placeholder
+                        if (is_placeholder(args[0].decl())) {
+                            z3::expr ast = z3::expr(ctx(), Z3_mk_bound(ctx(), 0, m_decls.world_sort));
+                            args.set(0, ast);
+                        }
+                        else {
+                            z3::expr ast = args[0];
+                            args.set(0, ast);
+                            m_modal_tree->get_or_create_named_node(ast);
+                        }
                     }
                     bool is_up = app.decl.range().is_bool() || app.decl.range().is_bv();
                     func_decl new_func = is_up
@@ -253,40 +338,13 @@ expr lazy_up::create_formula(const expr& e) {
         m_processed_args.pop();
     }
 
-    delete m_modal_tree;
-    m_modal_tree = new modal_tree(m_syntax_tree);
-    z3::expr assertion = m_modal_tree->get_root()->get_syntax_node()->initialize(m_modal_tree->get_root()->world_constant(), true);
-    
-    expr_vector& new_operands = m_assertions;
-    
+    z3::expr assertion = m_modal_tree->get_root()->get_syntax_node()->instantiate(m_modal_tree->get_root()->world_constant(), true);
+    m_assertions.push_back(assertion);
+    try_global_to_local();
     for (modal_tree_node* existing : m_modal_tree->get_existing_worlds())
         apply_unconstrained(existing);
-    
-    if (assertion.is_and()) {
-        expr_vector operands(ctx());
-        for (unsigned i = 0; i < assertion.num_args(); i++)
-            operands.push_back(assertion.arg(i));
-        
-        while (!operands.empty()) {
-            assertion = operands.back();
-            operands.pop_back();
-            if (assertion.is_and()) {
-                for (unsigned i = 0; i < assertion.num_args(); i++)
-                    operands.push_back(assertion.arg(i));
-            }
-            else if (!assertion.is_true()) {
-                new_operands.push_back(assertion);
-            }
-        }
-    }
-    else if (!assertion.is_true())
-        new_operands.push_back(assertion);
-    
-    if (new_operands.empty())
-        return ctx().bool_val(true);
-    if (new_operands.size() == 1)
-        return new_operands[0];
-    return z3::mk_and(new_operands);
+
+    return post_rewrite(z3::mk_and(m_assertions).decl(), m_assertions);
 }
 
 void lazy_up::push() {
@@ -316,6 +374,7 @@ void lazy_up::fixed(const expr& e, const expr& value) {
     expr arg = e.arg(0);
     SASSERT(z3::eq(arg.get_sort(), m_decls.world_sort));
     modal_tree_node* world = m_modal_tree->get(arg);
+    SASSERT(world);
     unsigned var = get_variable(e.decl());
     SASSERT(var != -1);
     //SASSERT(!world->is_assigned(var));
@@ -360,7 +419,7 @@ void lazy_up::final() {
                     LOG("Propagating (SK): No propagation required; body trivial");
                 }
                 else {
-                    z3::expr inst = to_init.m_template->initialize(new_world->world_constant(), false);
+                    z3::expr inst = to_init.m_template->instantiate(new_world->world_constant(), false);
                     propagate(to_init.just(), inst);
                     LOG("Propagating (SK): " << !to_init.just() << " => " << inst);
                 }
@@ -397,6 +456,29 @@ void lazy_up::decide(expr& e, unsigned& bit, Z3_lbool& val) {
 void lazy_up::output_model(const model& model, std::ostream& ostream) {
 
     unsigned ri = 0;
+    std::unordered_set<std::string> name_set;
+    std::unordered_map<unsigned, std::string> id_to_name;
+
+    // Find names
+    for (const auto& w : m_modal_tree->get_existing_worlds()) {
+        if (w->is_named()) {
+            std::string name = w->world_constant().decl().name().str();
+            name_set.insert(name);
+            id_to_name[w->get_id()] = name;
+        }
+    }
+    unsigned last_name = 0;
+    for (const auto& w : m_modal_tree->get_existing_worlds()) {
+        if (!w->is_named()) {
+            std::string name;
+            do {
+                name = "w" + std::to_string(last_name++);
+            } while (name_set.contains(name));
+            name_set.insert(name);
+            id_to_name[w->get_id()] = name;
+        }
+    }
+
     for (const auto& r : m_relation_list) {
         ostream << "Relation " << r.name().str() << ":\n";
         for (modal_tree_node* n : m_modal_tree->get_existing_worlds()) {
@@ -404,10 +486,10 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
                 continue;
             for (modal_tree_node* child : n->get_children(ri)) {
                 if (child->blocked_by()) {
-                    ostream << "\tw" << n->get_id() << " -> w" << child->blocked_by()->get_id() << " [blocked]" << std::endl;
+                    ostream << "\t" << id_to_name.at(n->get_id()) << " -> " << id_to_name.at(child->blocked_by()->get_id()) << " [blocked]" << "\n";
                 }
                 else {
-                    ostream << "\tw" << n->get_id() << " -> w" << child->get_id() << std::endl;
+                    ostream << "\t" << id_to_name.at(n->get_id()) << " -> " << id_to_name.at(child->get_id()) << "\n";
                 }
             }
         }
@@ -427,11 +509,11 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
                     unsigned id = m_uf_to_id[uf];
                     Z3_lbool val = n->get_assignment(id);
                     if (val != Z3_L_UNDEF)
-                        ostream << "\tw" << n->get_id() << ": " << (val == Z3_L_TRUE ? "true" : "false") << "\n";
+                        ostream << "\t" << id_to_name.at(n->get_id()) << ": " << (val == Z3_L_TRUE ? "true" : "false") << "\n";
                 }
                 else {
                     expr eval = model.eval(uf(n->world_constant()), true);
-                    ostream << "\tw" << n->get_id() << ": " << eval << "\n";
+                    ostream << "\t" << id_to_name.at(n->get_id()) << ": " << eval << "\n";
                 }
             }
             ostream << "\n";
@@ -466,23 +548,29 @@ Z3_lbool lazy_up::model_check(const expr& e) {
         
         func_decl f = current.decl();
         Z3_decl_kind kind = f.decl_kind();
-        bool modal = is_modal(f);
-        
+        bool ml = is_modal(f);
+        bool global = is_global(f);
+
         LOG("Checking " << current.original_expr << " with arg " << current.processed_idx);
         
-        if (!modal && kind == Z3_OP_UNINTERPRETED) {
+        if (!ml && !global && kind == Z3_OP_UNINTERPRETED) {
             // Prop. variables
             to_process.pop();
             if (current.original_expr.num_args() > 0 && z3::eq(f.domain(0), m_decls.world_sort)) {
                 if (m_orig_uf_to_new_uf.contains(f)) {
                     unsigned vid = get_variable(*(m_orig_uf_to_new_uf[f]));
                     SASSERT(vid != -1);
-                    if (!current.world->is_assigned(vid)) {
+                    modal_tree_node* w = current.world;
+                    if (!is_placeholder(current.original_expr.arg(0).decl())) {
+                        w = m_modal_tree->get(current.original_expr.arg(0));
+                        SASSERT(w);
+                    }
+                    if (!w->is_assigned(vid)) {
                         //to_process.top().args.push_back(current.original_expr);
                         to_process.top().args.push_back(m_ctx.bool_val(false)); // completion to please MC
                     }
                     else {
-                        to_process.top().args.push_back(ctx().bool_val(current.world->get_assignment(vid) == Z3_L_TRUE));
+                        to_process.top().args.push_back(ctx().bool_val(w->get_assignment(vid) == Z3_L_TRUE));
                     }
                 }
                 else {
@@ -494,31 +582,41 @@ Z3_lbool lazy_up::model_check(const expr& e) {
             }
             continue;
         }
+        else if (kind == Z3_OP_EQ && z3::eq(current.original_expr.arg(0).decl().range(), m_decls.world_sort)) {
+            to_process.pop();
+            z3::expr lhs = current.original_expr.arg(0);
+            z3::expr rhs = current.original_expr.arg(1);
+            if (is_placeholder(lhs.decl()) == is_placeholder(rhs.decl())) {
+                ERROR_ABOX;
+            }
+            to_process.top().args.push_back(m_ctx.bool_val(z3::eq(current.world->world_constant(), is_placeholder(lhs.decl()) ? rhs : lhs)));
+            continue;
+        }
         
         unsigned max;
         unsigned relation_id;
-        if (modal) {
+        if (ml) {
             relation_id = m_relation_to_id.contains(current.original_expr.arg(0).decl()) 
                     ? m_relation_to_id[current.original_expr.arg(0).decl()]
                     : -1; // the relation might be optimized away. Hence, there are no such children
             max = current.world->get_child_relations_cnt() > relation_id ? current.world->get_children(relation_id).size() : 0;
         }
-        else if (is_global(f)) {
+        else if (global) {
             max = m_modal_tree->existing_size();
         }
-        else{
+        else {
             max = current.original_expr.num_args();
         }
         
         if (!current.args.empty()) {
-            if (kind == Z3_OP_AND || (modal && is_box(f))) {
+            if (kind == Z3_OP_AND || (ml && is_box(f)) || global) {
                 if (to_process.top().args.back().is_false()) {
                     to_process.pop();
                     to_process.top().args.push_back(ctx().bool_val(false));
                     continue;
                 }
             }
-            else if (kind == Z3_OP_OR || (modal && is_dia(f))) {
+            else if (kind == Z3_OP_OR || (ml && is_dia(f))) {
                 if (to_process.top().args.back().is_true()) {
                     to_process.pop();
                     to_process.top().args.push_back(ctx().bool_val(true));
@@ -596,10 +694,11 @@ Z3_lbool lazy_up::model_check(const expr& e) {
             continue;
         }
         
-        if (modal) {
+        if (ml) {
             to_process.push({ current.world->get_children(relation_id)[to_process.top().processed_idx++], current.original_expr.arg(1) });
         }
-        else if (is_global(f)) {
+        else if (global) {
+            // TODO: Try to extract ABox here as well for performance reasons...
             to_process.push({ m_modal_tree->get_existing_worlds()[to_process.top().processed_idx++], current.original_expr.arg(0) });
         }
         else {
@@ -619,3 +718,5 @@ Z3_lbool lazy_up::model_check(const expr& e) {
 unsigned lazy_up::domain_size() {
     return m_modal_tree->existing_size();
 }
+
+#undef ERROR_ABOX

@@ -29,10 +29,8 @@ modal_decls modal_decls::create_default(context & ctx) {
     decls.dia = ctx.function("dia", domain, ctx.bool_sort());
     decls.box = ctx.function("box", domain, ctx.bool_sort());
 
-    domain.pop_back();
-    domain.push_back(decls.world_sort);
-    domain.push_back(ctx.bool_sort());
     decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort());
+    decls.reachable = ctx.function("reachable", decls.relation_sort, decls.world_sort, decls.world_sort, ctx.bool_sort());
     return decls;
 }
 
@@ -54,6 +52,10 @@ bool strategy::is_placeholder(const func_decl& decl) const {
 
 bool strategy::is_global(const func_decl &decl) const {
     return eq(decl, m_decls.global);
+}
+
+bool strategy::is_reachable(const func_decl &decl) const {
+    return eq(decl, m_decls.reachable);
 }
 
 bool strategy::is_ml_interpreted(const func_decl& decl) const {

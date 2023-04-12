@@ -67,7 +67,7 @@ const modal_tree_node* modal_tree_node::last_child(unsigned int relation) const 
     return m_existing_children[relation].back();
 }
 
-modal_tree_node* modal_tree_node::get_created_child(syntax_tree_node *abs) {
+modal_tree_node* modal_tree_node::get_created_child(syntax_tree_node* abs) {
     unsigned id = abs->get_id();
     if (id >= m_actual_children.size())
         return nullptr;
@@ -107,16 +107,17 @@ bool modal_tree_node::is_blocked() {
 }
 
 std::ostream& operator<<(std::ostream & os, const modal_tree_node & w) {
-    os << "**World w" << w.get_id() << "**:\n"
-       << "Const: " << w.world_constant() << "\n"
+    os << "**World " << w.world_constant() << "**:\n"
        << "Aux: " << w.aux_predicate() << "\n"
-       << "Parent: " << (w.get_parent() == nullptr ? "null" : std::to_string(w.get_parent()->get_id()).c_str()) << "\n"
-       << "Abstract: a" << w.get_syntax_node()->get_id() << "\n"
-       << "Template: " << w.get_syntax_node()->get_template(false) << "\n";
+       << "Parent: " << (w.get_parent() == nullptr ? "null" : w.get_parent()->world_constant().to_string()) << "\n";
+    if (w.get_syntax_node()) {
+        os << "Abstract: a" << w.get_syntax_node()->get_id() << "\n"
+           << "Template: " << w.get_syntax_node()->get_template(false) << "\n";
+    }
     os << "\nReachable: \n";
     for (unsigned r = 0; r < w.get_child_relations_cnt(); r++) {
         for (const auto& reachable : w.get_children(r)) {
-            os << "via r" << r << ": w" << reachable->get_id() << " [" << reachable->aux_predicate() << "]\n";
+            os << "via r" << r << ": " << reachable->world_constant() << " [" << reachable->aux_predicate() << "]\n";
         }
     }
     os << "\nSpread: \n";
@@ -135,17 +136,17 @@ std::ostream& operator<<(std::ostream & os, const modal_tree_node & w) {
     return os;
 }
 
-modal_tree_node* modal_tree::get_or_create_node(syntax_tree_node *abs, modal_tree_node *parent, const z3::expr & aux_predicate) {
-    modal_tree_node* node = nullptr;
-    z3::expr world_constant = z3::expr(m_ctx);
+modal_tree_node* modal_tree::get_or_create_node(syntax_tree_node* abs, modal_tree_node* parent, const z3::expr& aux_predicate, z3::expr world_constant) {
+    modal_tree_node* node;
     if (parent && (node = parent->get_created_child(abs))) {
-        world_constant = node->world_constant();
-        LOG("Recreated: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
+        LOG("Recreated: " << node->world_constant() << " with aux " << node->m_aux_predicate);
     }
     else {
-        world_constant = z3::expr(m_ctx, Z3_mk_fresh_const(m_ctx, "world", get_world_sort()));
-        node = new modal_tree_node(actual_size(), abs, parent, world_constant, aux_predicate);
-        LOG("Creating: w" << node->get_id() << " internally " << node->world_constant() << " because of " << !node->m_aux_predicate);
+        bool named = (z3::ast)world_constant;
+        if (!named)
+            world_constant = z3::expr(m_ctx, Z3_mk_fresh_const(m_ctx, "world", get_world_sort()));
+        node = new modal_tree_node(actual_size(), named, abs, parent, world_constant, aux_predicate);
+        LOG("Creating: " << node->world_constant() << " with aux " << node->m_aux_predicate);
         m_expr_to_node[world_constant] = node;
         m_actual_nodes.push_back(node);
     }

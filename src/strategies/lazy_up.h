@@ -31,7 +31,7 @@ public:
     void undo() override;
     void output(std::ostream& os) override {
         modal_tree_node* last_added = m_modal_tree->get_existing_worlds().back();
-        os << "created world w" << last_added->get_id() << " with aux " << last_added->aux_predicate() << " and " << last_added->world_constant() << " reachable from w" << last_added->get_parent()->get_id() << " via relation r" << m_relation;
+        os << "created world " <<  last_added->world_constant() << " with aux " << last_added->aux_predicate() << " reachable from " << last_added->get_parent()->world_constant() << " via relation r" << m_relation;
     }
 };
 
@@ -43,7 +43,7 @@ public:
     void undo() override;
     void output(std::ostream& os) override {
         spread_info last_added = m_world->get_spread(m_relation).back();
-        os << "added that a" << last_added.m_template->get_id() << " will spread to all children of w" << m_world->get_id() << " (" << m_world->world_constant() << ")" << " via relation r" << m_relation;
+        os << "added that a" << last_added.m_template->get_id() << " will spread to all children of " << m_world->world_constant() << " via relation r" << m_relation;
     }
 };
 
@@ -68,7 +68,7 @@ public:
     added_init_info_undo(std::vector<init_info>& to_init, const init_info& to_remove) : m_to_init(to_init), m_to_remove(to_remove) {}
     void undo() override;
     void output(std::ostream& os) override {
-        os << "added init-info a" << m_to_remove.m_template->get_id() << " justified by " << *(m_to_remove.m_justification) << " with parent w" << m_to_remove.m_parent->get_id();
+        os << "added init-info a" << m_to_remove.m_template->get_id() << " justified by " << *(m_to_remove.m_justification) << " with parent " << m_to_remove.m_parent->world_constant();
     }
 };
 
@@ -79,7 +79,7 @@ public:
     removed_init_info_undo(std::vector<init_info>& to_init, init_info info) : m_to_init(to_init), m_info(info) {}
     void undo() override;
     void output(std::ostream& os) override {
-        os << "removed init-info a" << m_info.m_template->get_id() << " justified by " << *(m_info.m_justification) << " with parent w" << m_info.m_parent->get_id();
+        os << "removed init-info a" << m_info.m_template->get_id() << " justified by " << *(m_info.m_justification) << " with parent " << m_info.m_parent->world_constant();
     }
 };
 
@@ -98,12 +98,11 @@ class lazy_up : public strategy, user_propagator_base {
     
     z3::expr_vector m_assertions;
     
-    std::vector<syntax_tree_node*> m_unconstraint_global; // true \sqsubseteq F
-    std::vector<std::vector<syntax_tree_node*>> m_constraint_global; // A \sqsubseteq F
+    std::vector<syntax_tree_node*> m_global; // true \sqsubseteq F
 
 #ifndef NDEBUG
-        on_clause_eh_t log = log_clause;
-        on_clause logger;
+    on_clause_eh_t log = log_clause;
+    const on_clause logger;
 #endif
 
     void add_trail(undo_trail* to_undo) {
@@ -148,11 +147,12 @@ class lazy_up : public strategy, user_propagator_base {
     unsigned get_variable(const func_decl& decl) const;
     unsigned get_or_create_variable(const func_decl& decl);
 
-    void add_unconstraint(syntax_tree_node* rhs) {
-        m_unconstraint_global.push_back(rhs);
+    void add_global(syntax_tree_node* rhs) {
+        m_global.push_back(rhs);
     }
 
-    void add_constraint(const func_decl& var, bool neg, syntax_tree_node* rhs);
+    void try_global_to_local();
+    bool try_apply_local(syntax_tree_node* abs);
 
     void output_model(const model& model, std::ostream &ostream) override;
 
