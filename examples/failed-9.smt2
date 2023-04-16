@@ -12,7 +12,7 @@
             (or (not (p world)) (p world))
             (q world)
             (box r1 (r world))
-            (not (box r1 (not (s world))))
+            (dia r1 (s world))
         )
     )
 )

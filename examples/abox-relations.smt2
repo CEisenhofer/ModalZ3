@@ -11,3 +11,5 @@
         (reachable r2 w2 w1)
     )
 )
+(assert (p w2))
+(assert (global (box r1 (not (p world)))))

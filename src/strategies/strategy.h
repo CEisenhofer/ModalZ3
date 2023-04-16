@@ -13,18 +13,27 @@
 using namespace z3;
 
 struct modal_decls {
+
+    friend class lazy_up;
+
     sort world_sort, relation_sort;
     func_decl dia, box;
     func_decl global;
     func_decl reachable;
     func_decl placeholder;
     
+private:
+    func_decl reachable_uf; // user-function
+    
+public:
+    
     modal_decls(const sort& world_sort, const sort& relation_sort) :
         world_sort(world_sort), relation_sort(relation_sort),
         dia(world_sort.ctx()), box(world_sort.ctx()),
         global(world_sort.ctx()),
         reachable(world_sort.ctx()),
-        placeholder(world_sort.ctx()) {}
+        placeholder(world_sort.ctx()),
+        reachable_uf(world_sort.ctx()) {}
         
     z3::sort_vector get_sorts();
     z3::func_decl_vector get_decls();
@@ -44,7 +53,7 @@ protected:
 
     check_result m_last_result;
 
-    const modal_decls m_decls;
+    modal_decls m_decls;
 
     func_decl_vector m_uf_list;
     std::unordered_set<func_decl, func_decl_hash, func_decl_eq> m_uf_set;
@@ -67,7 +76,7 @@ protected:
     bool is_dia(const func_decl& decl) const;
     bool is_placeholder(const func_decl& decl) const;
     bool is_global(const func_decl& decl) const;
-    bool is_reachable(const func_decl& decl) const;
+    bool is_reachable_extern(const func_decl& decl) const;
     bool is_ml_interpreted(const func_decl& decl) const;
     
     strategy(context& ctx, const modal_decls& decls);
@@ -86,9 +95,9 @@ protected:
     z3::expr post_rewrite(const func_decl& f, expr_vector& args);
     bool pre_rewrite(std::stack<expr_info>& expr_to_process, expr_info& current);
 
-    virtual check_result solve(const z3::expr& e) { 
+    virtual check_result solve(const z3::expr& e)  { 
         m_solver.add(e); 
-        return m_solver.check(); 
+        return m_solver.check();
     }
 
 public:

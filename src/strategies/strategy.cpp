@@ -63,7 +63,7 @@ bool strategy::is_global(const func_decl &decl) const {
     return eq(decl, m_decls.global);
 }
 
-bool strategy::is_reachable(const func_decl &decl) const {
+bool strategy::is_reachable_extern(const func_decl &decl) const {
     return eq(decl, m_decls.reachable);
 }
 
