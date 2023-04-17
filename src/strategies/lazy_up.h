@@ -2,6 +2,7 @@
 #include <utility>
 
 #include "strategy.h"
+#include "hashed_list.h"
 
 class lazy_up;
 
@@ -102,10 +103,10 @@ public:
 };
 
 class added_graph_update_undo : public undo_trail {
-    std::vector<graph_update*>& m_pending_updates; // delay world generation to final
+    hashed_list<graph_update*>& m_pending_updates; // delay world generation to final
     graph_update* m_added;
 public:
-    added_graph_update_undo(std::vector<graph_update*>& to_init, graph_update* to_remove) : m_pending_updates(to_init), m_added(to_remove) {}
+    added_graph_update_undo(hashed_list<graph_update*>& to_init, graph_update* to_remove) : m_pending_updates(to_init), m_added(to_remove) {}
     void undo() override;
     void output(std::ostream& os) override {
         os << "added: " << m_added;
@@ -113,10 +114,10 @@ public:
 };
 
 class removed_graph_update_undo : public undo_trail {
-    std::vector<graph_update*>& m_pending_updates;
+    hashed_list<graph_update*>& m_pending_updates;
     graph_update* m_removed;
 public:
-    removed_graph_update_undo(std::vector<graph_update*>& to_init, graph_update* info) : m_pending_updates(to_init), m_removed(info) {}
+    removed_graph_update_undo(hashed_list<graph_update*>& to_init, graph_update* removed) : m_pending_updates(to_init), m_removed(removed) {}
     void undo() override;
     void output(std::ostream& os) override {
         os << "removed: " << m_removed; 
@@ -138,7 +139,7 @@ class lazy_up : public strategy, user_propagator_base {
     std::stack<undo_trail*> m_trail;
     
     // delay world generation to final; order has to be irrelevant (reverting blocking will add back non-chronologically)
-    std::vector<graph_update*> m_pending_updates;
+    hashed_list<graph_update*> m_pending_updates; // TODO: Maybe std::list is not the best choice. We want efficient random delete, appending and and iteration
     
     z3::expr_vector m_assertions;
     

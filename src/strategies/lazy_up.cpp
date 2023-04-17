@@ -81,14 +81,14 @@ void connect_worlds_update::output(std::ostream& os) {
 
 void added_graph_update_undo::undo() {
     SASSERT(!m_pending_updates.empty());
-    SASSERT(*m_pending_updates.back() == m_added); // TODO: Non-chronological. This might fail if elements are blocked
-    delete m_pending_updates.back();
-    m_pending_updates.pop_back();
+    m_pending_updates.remove(m_added);
+    SASSERT(!m_pending_updates.contains(m_added));
+    delete m_added;
 }
 
 void removed_graph_update_undo::undo() {
     m_removed->undo();
-    m_pending_updates.push_back(m_removed);
+    m_pending_updates.add(m_removed);
 }
 
 void log_clause(expr const& proof, expr_vector const& clause) {
@@ -476,7 +476,7 @@ void lazy_up::fixed(const expr& e, const expr& value) {
             if (!v)
                 return;
             unsigned relation_id = m_relation_to_id[e.arg(0).decl()];
-            m_pending_updates.push_back(new connect_worlds_update(this, w1, w2, relation_id, e));
+            m_pending_updates.add(new connect_worlds_update(this, w1, w2, relation_id, e));
             add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));
             return;
         }
@@ -492,7 +492,7 @@ void lazy_up::fixed(const expr& e, const expr& value) {
     
         syntax_tree_node* abs = m_syntax_tree->get_node(func);
         if (abs) { // Modal operator; otw. just ordinary predicate
-            m_pending_updates.push_back(v ? (graph_update*)new new_spread_update(this, abs, world, e) : new new_world_update(this, abs, world, e));
+            m_pending_updates.add(v ? (graph_update*)new new_spread_update(this, abs, world, e) : new new_world_update(this, abs, world, e));
             add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));
         }
     
@@ -515,17 +515,16 @@ void lazy_up::final() {
         else
             LOG("Final check: " << ++final_checks);
         // LOG("Current state: " << *m_modal_tree);
-        unsigned last = m_pending_updates.size();
-        // TODO: Reverse
-        for (unsigned i = m_pending_updates.size(); i > 0; i--) {
-            const auto& to_apply = m_pending_updates[i - 1];
-            if (!to_apply->apply()) {
-                m_pending_updates[--last] = m_pending_updates[i - 1];
-                continue;
+        unsigned i = 0;
+        while (i < m_pending_updates.size()) {
+            graph_update* to_apply = m_pending_updates[i];
+            if (to_apply->apply()) {
+                add_trail(new removed_graph_update_undo(m_pending_updates, to_apply));
+                m_pending_updates.remove_at(i);
             }
-            add_trail(new removed_graph_update_undo(m_pending_updates, to_apply));
+            else
+                i++;
         }
-        m_pending_updates.resize(m_pending_updates.size() - last);
     }
     catch (const exception& e) {
         if (strcmp(e.msg(), "canceled") != 0) {
