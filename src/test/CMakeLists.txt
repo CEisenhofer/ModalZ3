@@ -5,7 +5,7 @@ add_executable(test
   random_formula.cpp
 )
 
-target_link_libraries(test PRIVATE ast)
+target_link_libraries(test PRIVATE strategies)
 #target_link_libraries(test PRIVATE utils)
 
 include_directories("../strategies")

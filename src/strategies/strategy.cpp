@@ -15,6 +15,7 @@ z3::func_decl_vector modal_decls::get_decls() {
     functions.push_back(box);
     functions.push_back(dia);
     functions.push_back(global);
+    functions.push_back(trans);
     functions.push_back(reachable);
     functions.push_back(placeholder);
     return functions;
@@ -31,6 +32,7 @@ modal_decls modal_decls::create_default(context & ctx) {
     decls.box = ctx.function("box", domain, ctx.bool_sort());
 
     decls.global = ctx.function("global", ctx.bool_sort(), ctx.bool_sort());
+    decls.trans = ctx.function("trans", decls.relation_sort, ctx.bool_sort());
     decls.reachable = ctx.function("reachable", decls.relation_sort, decls.world_sort, decls.world_sort, ctx.bool_sort());
     return decls;
 }
@@ -61,6 +63,10 @@ bool strategy::is_placeholder(const func_decl& decl) const {
 
 bool strategy::is_global(const func_decl &decl) const {
     return eq(decl, m_decls.global);
+}
+
+bool strategy::is_trans(const func_decl &decl) const {
+    return eq(decl, m_decls.trans);
 }
 
 bool strategy::is_reachable_extern(const func_decl &decl) const {

@@ -139,6 +139,7 @@ unsigned lazy_up::get_or_add_relation(const expr& relation) {
         unsigned relation_id = m_relation_to_id.size();
         m_relation_to_id[relation.decl()] = relation_id;
         m_relation_list.push_back(relation.decl());
+        m_relation_trans.push_back(false);
         LOG("Introduced relation: " << relation << " with id " << relation_id);
         return relation_id;
     }
@@ -333,6 +334,12 @@ expr lazy_up::create_formula(const expr& e) {
                 add_global(new_node);
                 m_processed_args.top().push_back(ctx().bool_val(true));
             }
+            else if (is_trans(current.decl)) {
+                if (!current.top_level)
+                    throw parse_exception("\"trans\" may only occur top-level");
+                m_relation_trans[get_or_add_relation(current.e.arg(0))] = true;
+                m_processed_args.top().push_back(ctx().bool_val(true));
+            }
             else {
                 for (unsigned i = current.e.num_args(); i > 0; i--) {
                     expr_info info2(current.e.arg(i - 1));
@@ -453,43 +460,50 @@ void lazy_up::pop(unsigned num_scopes) {
 }
 
 void lazy_up::fixed(const expr& e, const expr& value) {
-    SASSERT(value.is_bool());
-    bool v = value.is_true();
-    LOG(e << " = " << value);
-    func_decl func = e.decl();
-    SASSERT(func.arity() > 0);
-    if (is_reachable_intern(func)) {
-        modal_tree_node* w1 = m_modal_tree->get_or_create_named_node(e.arg(1));
-        modal_tree_node* w2 = m_modal_tree->get_or_create_named_node(e.arg(2));
-        SASSERT(w1->is_named());
-        SASSERT(w2->is_named());
-        SASSERT(m_relation_to_id.contains(e.arg(0).decl()));
-        // we will anyway not connect two named worlds automatically. We can ignore the negative case (the SAT core will deal with prop. conflicts)
-        if (!v)
+    try {
+        SASSERT(value.is_bool());
+        bool v = value.is_true();
+        LOG(e << " = " << value);
+        func_decl func = e.decl();
+        SASSERT(func.arity() > 0);
+        if (is_reachable_intern(func)) {
+            modal_tree_node* w1 = m_modal_tree->get_or_create_named_node(e.arg(1));
+            modal_tree_node* w2 = m_modal_tree->get_or_create_named_node(e.arg(2));
+            SASSERT(w1->is_named());
+            SASSERT(w2->is_named());
+            SASSERT(m_relation_to_id.contains(e.arg(0).decl()));
+            // we will anyway not connect two named worlds automatically. We can ignore the negative case (the SAT core will deal with prop. conflicts)
+            if (!v)
+                return;
+            unsigned relation_id = m_relation_to_id[e.arg(0).decl()];
+            m_pending_updates.push_back(new connect_worlds_update(this, w1, w2, relation_id, e));
+            add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));
             return;
-        unsigned relation_id = m_relation_to_id[e.arg(0).decl()];
-        m_pending_updates.push_back(new connect_worlds_update(this, w1, w2, relation_id, e));
-        add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));
-        return;
+        }
+        expr arg = e.arg(0);
+        SASSERT(is_world(arg.get_sort()));
+        modal_tree_node* world = m_modal_tree->get(arg);
+        SASSERT(world);
+        unsigned var = get_variable(e.decl());
+        SASSERT(var != -1);
+        //SASSERT(!world->is_assigned(var));
+        world->assign(var, v);
+        add_trail(new assignment_undo(world, var));
+    
+        syntax_tree_node* abs = m_syntax_tree->get_node(func);
+        if (abs) { // Modal operator; otw. just ordinary predicate
+            m_pending_updates.push_back(v ? (graph_update*)new new_spread_update(this, abs, world, e) : new new_world_update(this, abs, world, e));
+            add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));
+        }
+    
+        //if (m_trail_sz.empty()) // Root level; we won't have to revert them
+        //    final();
     }
-    expr arg = e.arg(0);
-    SASSERT(is_world(arg.get_sort()));
-    modal_tree_node* world = m_modal_tree->get(arg);
-    SASSERT(world);
-    unsigned var = get_variable(e.decl());
-    SASSERT(var != -1);
-    //SASSERT(!world->is_assigned(var));
-    world->assign(var, v);
-    add_trail(new assignment_undo(world, var));
-
-    syntax_tree_node* abs = m_syntax_tree->get_node(func);
-    if (abs) { // Modal operator; otw. just ordinary predicate
-        m_pending_updates.push_back(v ? (graph_update*)new new_spread_update(this, abs, world, e) : new new_world_update(this, abs, world, e));
-        add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));
+    catch (const exception& e) {
+        if (strcmp(e.msg(), "canceled") != 0) {
+            throw;
+        }
     }
-
-    //if (m_trail_sz.empty()) // Root level; we won't have to revert them
-    //    final();
 }
 
 static int final_checks = 0;
@@ -649,7 +663,45 @@ Z3_lbool lazy_up::model_check(const expr& e) {
 
         LOG("Checking " << current.original_expr << " with arg " << current.processed_idx);
         
-        if (!ml && !global && !reachable && kind == Z3_OP_UNINTERPRETED) {
+        if (is_trans(f)) {
+            to_process.pop();
+            std::vector<std::vector<bool>> reachable;
+            std::vector<unsigned> reachable_cnt;
+            std::vector<modal_tree_node*> nodes = m_modal_tree->get_existing_worlds();
+            std::unordered_map<modal_tree_node*, unsigned> node_to_id;
+            for (unsigned i = 0; i < nodes.size(); i++)
+                node_to_id[nodes[i]] = i;
+            
+            unsigned relation_id = get_or_add_relation(current.original_expr.arg(0));
+            const unsigned sz = nodes.size();
+            for (unsigned i = 0; i < sz; i++) {
+                reachable.emplace_back().resize(sz);
+                for (const auto& child : nodes[i]->get_children(relation_id)) {
+                    reachable[i][node_to_id[child.m_to]] = true;
+                }
+            }
+            // for now do the inefficient O(n^3) approach (compare neighbors with cg):
+            for (unsigned i = 0; i < sz; i++)
+                for (unsigned j = 0; j < sz; j++)
+                    for (unsigned k = 0; k < sz; k++)
+                        reachable[j][k] = reachable[j][i] && reachable[i][k];
+            
+            reachable_cnt.resize(sz);
+            for (unsigned i = 0; i < sz; i++) {
+                for (unsigned j = 0; j < sz; j++) {
+                    reachable_cnt[i] += reachable[i][j];
+                }
+            }
+            
+            unsigned i = 0;
+            for (; i < sz; i++) {
+                if (nodes[i]->get_children(relation_id).size() != reachable_cnt[i])
+                    break;
+            }
+            to_process.top().args.push_back(m_ctx.bool_val(i == sz));
+            continue;
+        }
+        else if (!ml && !global && !reachable && kind == Z3_OP_UNINTERPRETED) {
             // Prop. variables
             to_process.pop();
             if (current.original_expr.num_args() > 0 && is_world(f.domain(0))) {

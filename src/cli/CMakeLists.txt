@@ -4,7 +4,7 @@ add_executable(cli
   main.cpp
 )
 
-target_link_libraries(cli PRIVATE ast)
+target_link_libraries(cli PRIVATE strategies)
 #target_link_libraries(cli PRIVATE utils)
 
 include_directories("../strategies")

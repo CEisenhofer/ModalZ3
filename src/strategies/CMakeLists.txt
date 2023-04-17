@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18.4)
 
-add_library(ast
+add_library(strategies
     standard_translation.cpp
     modal_to_euf.cpp
     lazy_up.cpp
@@ -13,5 +13,5 @@ add_library(ast
     iterative_deepening_unrolled.h
 )
 
-target_link_libraries(ast utils)
+target_link_libraries(strategies utils)
 include_directories("../utils")

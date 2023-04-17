@@ -19,6 +19,7 @@ struct modal_decls {
     sort world_sort, relation_sort;
     func_decl dia, box;
     func_decl global;
+    func_decl trans;
     func_decl reachable;
     func_decl placeholder;
     
@@ -31,6 +32,7 @@ public:
         world_sort(world_sort), relation_sort(relation_sort),
         dia(world_sort.ctx()), box(world_sort.ctx()),
         global(world_sort.ctx()),
+        trans(world_sort.ctx()),
         reachable(world_sort.ctx()),
         placeholder(world_sort.ctx()),
         reachable_uf(world_sort.ctx()) {}
@@ -62,6 +64,7 @@ protected:
     std::unordered_map<func_decl, std::optional<func_decl>, func_decl_hash, func_decl_eq> m_orig_uf_to_new_uf;
 
     std::unordered_map<func_decl, unsigned, func_decl_hash, func_decl_eq> m_relation_to_id;
+    std::vector<bool> m_relation_trans;
     func_decl_vector m_relation_list;
 
     bool m_is_solving = false;
@@ -76,6 +79,7 @@ protected:
     bool is_dia(const func_decl& decl) const;
     bool is_placeholder(const func_decl& decl) const;
     bool is_global(const func_decl& decl) const;
+    bool is_trans(const func_decl& decl) const;
     bool is_reachable_extern(const func_decl& decl) const;
     bool is_ml_interpreted(const func_decl& decl) const;
     
