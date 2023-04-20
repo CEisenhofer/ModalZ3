@@ -3,6 +3,15 @@
 #include <algorithm>
 #include "modal_tree.h"
 
+
+modal_tree_node* get_from::operator()(const connection_info& c) const {
+    return c.m_from;
+}
+
+modal_tree_node* get_to::operator()(const connection_info& c) const {
+    return c.m_to;
+}
+
 bool modal_tree_node::is_assigned(unsigned int variable) const {
     return m_assignment_set.size() > variable && m_assignment_set[variable] != Z3_L_UNDEF;
 }
@@ -44,15 +53,9 @@ void modal_tree_node::add_spread(const spread_info & info, unsigned int relation
     m_spread[relation].push_back(info);
 }
 
-const spread_info& modal_tree_node::last_spread(unsigned int relation) const {
-    SASSERT(m_spread.size() >= relation);
-    SASSERT(!m_spread[relation].empty());
-    return m_spread[relation].back();
-}
-
 void modal_tree_node::add_skolem_child(modal_tree_node* node, syntax_tree_node* abs) {
     unsigned relation = abs->get_relation();
-    add_named_child({ this, node, node->aux_predicate() }, relation);
+    add_named_child({ this, node, node->justification() }, relation);
 
     unsigned id = abs->get_id();
     if (m_created_children.size() <= id)
@@ -60,18 +63,21 @@ void modal_tree_node::add_skolem_child(modal_tree_node* node, syntax_tree_node* 
     m_created_children[id] = node;
 }
 
-void modal_tree_node::add_named_child(const connection_info& connection, unsigned relation) {
+bool modal_tree_node::add_named_child(const connection_info& connection, unsigned relation) {
     if (m_existing_children.size() <= relation)
         m_existing_children.resize(relation + 1);
     SASSERT(connection.m_from == this);
-    SASSERT(!std::any_of(m_existing_children[relation].begin(), m_existing_children[relation].end(), [&](const connection_info& existing) { return existing.m_from->get_id() != get_id() || z3::eq(connection.m_to->world_constant(), existing.m_to->world_constant()); }));
-    m_existing_children[relation].push_back(connection);
-}
+    if (!m_existing_children[relation].add(connection)) {
+        SASSERT(connection.m_to->m_existing_parents.size() > relation && connection.m_to->m_existing_parents[relation].contains(connection.m_to));
+        return false;
+    }
+    SASSERT(connection.m_to->m_existing_parents.size() <= relation || !connection.m_to->m_existing_parents[relation].contains(connection.m_to));
 
-const modal_tree_node* modal_tree_node::last_child(unsigned int relation) const {
-    SASSERT(m_existing_children.size() >= relation);
-    SASSERT(!m_existing_children[relation].empty());
-    return m_existing_children[relation].back().m_to;
+    if (connection.m_to->m_existing_parents.size() <= relation)
+        connection.m_to->m_existing_parents.resize(relation + 1);
+    bool added = connection.m_to->m_existing_parents[relation].add(connection);
+    SASSERT(added);
+    return true;
 }
 
 modal_tree_node* modal_tree_node::get_created_child(syntax_tree_node* abs) {
@@ -81,24 +87,11 @@ modal_tree_node* modal_tree_node::get_created_child(syntax_tree_node* abs) {
     return m_created_children[id];
 }
 
-void modal_tree_node::remove_and_delete_last_child(unsigned relation) {
-    SASSERT(m_existing_children.size() >= relation);
-    SASSERT(!m_existing_children[relation].empty());
-    // delete m_existing_children[relation].back();
-    m_existing_children[relation].pop_back();
-}
-
 void modal_tree_node::remove_child(modal_tree_node* child, unsigned relation) {
     SASSERT(m_existing_children.size() >= relation);
-    SASSERT(!m_existing_children[relation].empty());
-    for (unsigned i = 0; i < m_existing_children[relation].size(); i++) {
-        if (m_existing_children[relation][i].m_to == child) {
-            m_existing_children[relation][i] = m_existing_children[relation].back();
-            m_existing_children[relation].pop_back();
-            return;
-        }
-    }
-    SASSERT(false);
+    SASSERT(child->m_existing_parents.size() >= relation);
+    m_existing_children[relation].remove(child);
+    child->m_existing_parents[relation].remove(this);
 }
 
 void modal_tree_node::remove_last_spread(unsigned relation) {
@@ -131,7 +124,7 @@ bool modal_tree_node::is_blocked() {
 
 std::ostream& operator<<(std::ostream & os, const modal_tree_node & w) {
     os << "**World " << w.world_constant() << "**:\n"
-       << "Aux: " << w.aux_predicate() << "\n"
+       << "Aux: " << w.justification() << "\n"
        << "Parent: " << (w.get_parent_connection().m_from == nullptr ? "null" : w.get_parent_connection().m_from->world_constant().to_string()) << "\n";
     if (w.get_syntax_node()) {
         os << "Abstract: a" << w.get_syntax_node()->get_id() << "\n"
@@ -140,13 +133,13 @@ std::ostream& operator<<(std::ostream & os, const modal_tree_node & w) {
     os << "\nReachable: \n";
     for (unsigned r = 0; r < w.get_child_relations_cnt(); r++) {
         for (const auto& reachable : w.get_children(r)) {
-            os << "via r" << r << ": " << reachable.m_to->world_constant() << " [" << reachable.m_justification << "]\n";
+            os << "via r" << r << ": " << reachable.m_to->world_constant() << " [" << reachable.m_justifications << "]\n";
         }
     }
     os << "\nSpread: \n";
     for (unsigned r = 0; r < w.get_spread_relation_cnt(); r++) {
         for (const auto& spread : w.get_spread(r)) {
-            os << "via r" << r << ": a" << spread.m_template->get_id() << " [" << spread.m_justification << "] Templ.: "
+            os << "via r" << r << ": a" << spread.m_template->get_id() << " [" << spread.m_justifications << "] Templ.: "
                << spread.m_template->get_template(true) << "\n";
         }
     }
@@ -159,17 +152,19 @@ std::ostream& operator<<(std::ostream & os, const modal_tree_node & w) {
     return os;
 }
 
-modal_tree_node* modal_tree::get_or_create_node(syntax_tree_node* abs, modal_tree_node* parent, const z3::expr& aux_predicate, z3::expr world_constant) {
+modal_tree_node* modal_tree::get_or_create_node(syntax_tree_node* abs, modal_tree_node* parent, const z3::expr_vector& justification, z3::expr world_constant) {
     modal_tree_node* node;
     if (parent && (node = parent->get_created_child(abs))) {
-        LOG("Recreated: " << node->world_constant() << " with aux " << node->aux_predicate());
+        node->m_skolem_info.m_justifications = justification;
+        LOG("Recreated: " << node->world_constant() << " with justification " << node->justification());
+        node->m_idx = m_existing_nodes.size();
     }
     else {
         bool named = (z3::ast)world_constant;
         if (!named)
             world_constant = z3::expr(m_ctx, Z3_mk_fresh_const(m_ctx, "world", get_world_sort()));
-        node = new modal_tree_node(actual_size(), named, abs, parent, world_constant, aux_predicate);
-        LOG("Created world " << node->world_constant() << " with aux " << node->aux_predicate());
+        node = new modal_tree_node(existing_size(), named, abs, parent, world_constant, justification);
+        LOG("Created world " << node->world_constant() << " with aux " << node->justification());
         m_expr_to_node[world_constant] = node;
         m_actual_nodes.push_back(node);
     }
@@ -179,10 +174,23 @@ modal_tree_node* modal_tree::get_or_create_node(syntax_tree_node* abs, modal_tre
     return node;
 }
 
-void modal_tree::undo_last_child(unsigned relation) {
-    // We delete the world from the model but keep the data-structure
-    SASSERT(m_existing_nodes.size() > 1);
-    m_existing_nodes.back()->get_parent_connection().m_from->remove_and_delete_last_child(relation);
+void modal_tree::remove_world(modal_tree_node* world) {
+#if 0 and not defined NDEBUG
+    // this is weird but may happen unfortunately. (Not necessarily a bug):
+    // the solver may reinitialize some of the auxiliary variables and assign them.
+    // Therefore, a non-existing world has some children. We just ignore this
+    //
+    // we first have to detach all children/parents
+    for (const auto& c : world->m_existing_children) {
+        SASSERT(c.empty());
+    }
+    for (const auto& c : world->m_existing_parents) {
+        SASSERT(c.empty());
+    }
+#endif
+    SASSERT(m_existing_nodes.size() > world->m_idx && world == m_existing_nodes[world->m_idx]);
+    m_existing_nodes.back()->m_idx = world->m_idx;
+    m_existing_nodes[world->m_idx] = m_existing_nodes.back();
     m_existing_nodes.pop_back();
 }
 
@@ -196,7 +204,7 @@ void modal_tree::remove_blocked() {
             SASSERT(parent.m_from && parent.m_from->blocked_by() == nullptr);
             parent.m_from->remove_child(parent.m_to, parent.m_to->get_syntax_node()->get_relation());
             parent.m_from->add_named_child(
-                    connection_info(parent.m_from, parent.m_to->blocked_by(), parent.m_justification), 
+                    connection_info(parent.m_from, parent.m_to->blocked_by(), parent.m_justifications),
                     parent.m_to->get_syntax_node()->get_relation());
             m_existing_nodes[i] = m_existing_nodes[--last];
             continue;
@@ -204,6 +212,33 @@ void modal_tree::remove_blocked() {
         i++;
     }
     m_existing_nodes.resize(last);
+}
+
+void modal_tree::transitive_closure(unsigned relation_id) {
+    std::vector<std::vector<bool>> reachable;
+
+    const unsigned sz = m_existing_nodes.size();
+    for (unsigned i = 0; i < sz; i++) {
+        reachable.emplace_back().resize(sz);
+        if (m_existing_nodes[i]->get_child_relations_cnt() <= relation_id)
+            continue;
+        for (const auto& child : m_existing_nodes[i]->get_children(relation_id)) {
+            reachable[i][child.m_to->get_internal_idx()] = true;
+        }
+    }
+
+    // for now do the inefficient O(n^3) approach (compare neighbors with cg):
+    for (unsigned i = 0; i < sz; i++)
+        for (unsigned j = 0; j < sz; j++)
+            for (unsigned k = 0; k < sz; k++) {
+                if (!reachable[j][k] && reachable[j][i] && reachable[i][k]) {
+                    auto from = m_existing_nodes[j];
+                    auto to = m_existing_nodes[k];
+                    bool added = from->add_named_child(connection_info(from, to, z3::expr_vector(m_ctx)), relation_id);
+                    SASSERT(added);
+                    reachable[j][k] = true;
+                }
+            }
 }
 
 std::ostream& operator<<(std::ostream& os, const modal_tree& m) {

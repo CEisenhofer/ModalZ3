@@ -38,6 +38,8 @@ protected:
     
 public:
 
+    ~graph_update() override = default;
+
     virtual bool apply() = 0;
     virtual bool operator==(graph_update* op) const = 0;
 };
@@ -46,17 +48,17 @@ class new_spread_update : public graph_update {
     
     syntax_tree_node* m_template;
     modal_tree_node* m_parent;
-    expr m_justification;
+    expr_vector m_justifications;
     
 public:
     
-    new_spread_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr just) : graph_update(up), m_template(temp), m_parent(parent), m_justification(std::move(just)) { }
+    new_spread_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr_vector just) : graph_update(up), m_template(temp), m_parent(parent), m_justifications(std::move(just)) { }
     
     bool apply() override;
     void undo() override;
     
     bool operator==(graph_update* op) const { // For Debug
-        return op && (m_template == ((new_spread_update*)op)->m_template) && (m_parent == ((new_spread_update*)op)->m_parent) && z3::eq(m_justification, (((new_spread_update*)op)->m_justification));
+        return op && (m_template == ((new_spread_update*)op)->m_template) && (m_parent == ((new_spread_update*)op)->m_parent);
     }
     void output(std::ostream& os) override;
 };
@@ -66,18 +68,18 @@ class new_world_update : public graph_update {
     syntax_tree_node* m_template;
     modal_tree_node* m_parent;
     modal_tree_node* m_created = nullptr;
-    expr m_justification;
+    expr_vector m_justifications;
     
 public:
     
-    new_world_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr just) : graph_update(up), m_template(temp), m_parent(parent), m_justification(std::move(just)) { }
+    new_world_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr_vector just) : graph_update(up), m_template(temp), m_parent(parent), m_justifications(std::move(just)) { }
     
     bool apply() override;
     void undo() override;
     
     void output(std::ostream& os) override;
     bool operator==(graph_update* op) const {
-        return op && (m_template == ((new_world_update*)op)->m_template) && (m_parent == ((new_world_update*)op)->m_parent) && z3::eq(m_justification, (((new_world_update*)op)->m_justification));
+        return op && (m_template == ((new_world_update*)op)->m_template) && (m_parent == ((new_world_update*)op)->m_parent);
     }
 };
 
@@ -85,12 +87,13 @@ class connect_worlds_update :  public graph_update {
     
     connection_info m_connection;
     unsigned m_relation;
+    std::vector<connection_info> m_to_undo;
     
 public:
     
-    connect_worlds_update(lazy_up* up, modal_tree_node* w1, modal_tree_node* w2, unsigned relation, expr just) : graph_update(up), m_connection(w1, w2, std::move(just)), m_relation(relation) { 
-        SASSERT(w1->is_named());
-        SASSERT(w2->is_named());
+    connect_worlds_update(lazy_up* up, const connection_info& connection, unsigned relation) : graph_update(up), m_connection(connection), m_relation(relation) {
+        SASSERT(connection.m_from->is_named());
+        SASSERT(connection.m_to->is_named());
     }
     
     bool apply() override;
@@ -107,6 +110,9 @@ class added_graph_update_undo : public undo_trail {
     graph_update* m_added;
 public:
     added_graph_update_undo(hashed_list<graph_update*>& to_init, graph_update* to_remove) : m_pending_updates(to_init), m_added(to_remove) {}
+    ~added_graph_update_undo() override {
+        delete m_added;
+    }
     void undo() override;
     void output(std::ostream& os) override {
         os << "added: " << m_added;
@@ -150,6 +156,9 @@ class lazy_up : public strategy, user_propagator_base {
     const on_clause logger;
 #endif
 
+    expr create_reachable(expr r, expr w1, expr w2) {
+        return m_decls.reachable_uf(r, w1, w2);
+    }
 
     bool is_reachable_intern(const func_decl &decl) const {
         return z3::eq(decl, m_decls.reachable_uf);
@@ -191,7 +200,7 @@ class lazy_up : public strategy, user_propagator_base {
     
     void propagate_to(modal_tree_node* new_world, unsigned relation);
     void propagate_to(const connection_info& connection, unsigned relation);
-    void propagate_from(syntax_tree_node* temp, modal_tree_node* parent, unsigned relation, const expr& justification);
+    void propagate_from(syntax_tree_node* temp, modal_tree_node* parent, unsigned relation, const expr_vector& justifications);
 
     void apply_unconstrained(modal_tree_node* world);
     
@@ -212,8 +221,12 @@ class lazy_up : public strategy, user_propagator_base {
     virtual check_result solve(const z3::expr& e) { 
         m_solver.add(e); 
         check_result res = m_solver.check();
-        if (res == z3::sat)
+        if (res == z3::sat) {
             m_modal_tree->remove_blocked();
+            for (unsigned i = 0; i < m_relation_trans.size(); i++)
+                if (m_relation_trans[i])
+                    m_modal_tree->transitive_closure(i);
+        }
         return res;
     }
 

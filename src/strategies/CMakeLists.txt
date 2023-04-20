@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.18.4)
 
 add_library(strategies
     standard_translation.cpp
-    modal_to_euf.cpp
     lazy_up.cpp
     strategy.cpp
     syntax_tree.cpp

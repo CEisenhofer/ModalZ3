@@ -1,3 +1,4 @@
+; sat
 (declare-fun p (World) Bool)
 (declare-fun q (World) Bool)
 (declare-fun r () Bool)

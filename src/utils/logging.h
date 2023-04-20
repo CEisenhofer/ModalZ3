@@ -1,5 +1,5 @@
 #pragma once
-#define SILENT
+// #define SILENT
 
 #include <iostream>
 #include <string>

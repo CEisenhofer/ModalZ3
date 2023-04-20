@@ -227,8 +227,10 @@ false: FALSE { $$.flavour = EFALSE; }
 
 %%
 
-int main() {
+int main(int argc, char** argv) {
 	printf("(declare-const r Relation)\n");
+    if (argc == 2 && argv[1][0] == 'K' && argv[1][1] == '4' && argv[1][2] == '\0')
+        printf("(assert (trans r))\n");
 	yyparse();
 	//printf("(check-sat)\n");
 	return 0;
