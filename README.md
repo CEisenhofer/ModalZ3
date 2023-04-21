@@ -14,7 +14,6 @@ You need to put the libz3-library to a path where the program can find it. There
 The program can be started from CL. The relevant arguments are
 
   - -t=ms ... timeout in milliseconds
-[//]: #  - -m=m ... memory limit (is not really reliable; better don't use)
    - -r   ... run the program on all *.smt2 files in the given directory recursively
    
 After these arguments you can give the path to an SMT-LIB file containing the problem or a directory where the program will look for all *.smt2 files
