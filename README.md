@@ -10,6 +10,9 @@ The program depends on the Z3 SMT-solver which can be downloaded from [https://g
 As there is a bug in Z3 that may cause Z3 to give wrong results, you have to build it from source. Otw. the bug will be fixed in the version > 4.12.1
 
 You need to put the libz3-library to a path where the program can find it. There are no additional libraries required.
+The Z3 library has to be found by CMake. This can be done by passing `-DZ3_INCLUDE_DIR=[path-to-Z3-headers] -DZ3_LIBRARIES=[path-to-Z3-static-lib]` to CMake.
+
+# Running
 
 The program can be started from CL. The relevant arguments are
 
