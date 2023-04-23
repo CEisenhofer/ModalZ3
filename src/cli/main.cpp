@@ -13,7 +13,7 @@
 const char* HELP =
 " [-m=size_in_mb] [-t=timeout_in_ms] [-r] Mode File\n"
 "Solves a multi-modal formula\n\n"
-"Mode\t one of: std (std translation), id (iterative deepening), id2 (iterative deepening with unrolling), upl (user-propagator; lazy), upe (user-propagator; eager)\n"
+"Mode\t one of: std (std translation), id (iterative deepening), id2 (iterative deepening with unrolling), upl (user-propagator; lazy), upe (user-propagator; eager) [use \"upe\"; the other are for comparison only]\n"
 "File\t Path to an SMTLIB2 set_is_benchmark\n";
 
 int main(int argc, char** argv) {

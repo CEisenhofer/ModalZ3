@@ -75,6 +75,7 @@ protected:
 
     bool is_world(const sort& s) const;
     bool is_relation(const sort& s) const;
+    bool is_basic_theory(const func_decl& decl) const;
     bool is_modal(const func_decl& decl) const;
     bool is_box(const func_decl& decl) const;
     bool is_dia(const func_decl& decl) const;

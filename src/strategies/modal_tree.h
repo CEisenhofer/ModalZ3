@@ -217,7 +217,7 @@ public:
     void remove_world(modal_tree_node* world);
     
     // should not be used for reasoning after these calls
-    void remove_blocked();
+    void remove_blocked(); 
     void transitive_closure(unsigned relation);
 
 };

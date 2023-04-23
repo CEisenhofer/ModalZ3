@@ -1,0 +1,13 @@
+(declare-fun x (World) Int)
+(declare-const r Relation)
+(declare-const a1 World)
+(declare-const a2 World)
+(declare-const a3 World)
+(declare-const a4 World)
+
+(assert (reachable r world a1))
+(assert (reachable r world a2))
+(assert (reachable r world a3))
+(assert (reachable r world a4))
+(assert (box r (> (x world) 10)))
+(assert (global  (= (mod (x world) 2) 0)))

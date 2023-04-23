@@ -45,6 +45,15 @@ bool strategy::is_relation(const sort& s) const {
     return z3::eq(s, m_decls.relation_sort);
 }
 
+bool strategy::is_basic_theory(const func_decl& decl) const {
+    Z3_decl_kind kind = decl.decl_kind();
+    if (kind == Z3_OP_TRUE || kind == Z3_OP_FALSE || kind == Z3_OP_AND || kind == Z3_OP_OR || kind == Z3_OP_IMPLIES || kind == Z3_OP_NOT || kind == Z3_OP_ITE || kind == Z3_OP_UNINTERPRETED)
+        return true;
+    if (kind == Z3_OP_EQ)
+        return decl.domain(0).is_bool();
+    return false;
+}
+
 bool strategy::is_modal(const func_decl& decl) const {
     return is_box(decl) || is_dia(decl);
 }

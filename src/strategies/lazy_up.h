@@ -48,11 +48,11 @@ class new_spread_update : public graph_update {
     
     syntax_tree_node* m_template;
     modal_tree_node* m_parent;
-    expr_vector m_justifications;
+    const expr_vector m_justifications;
     
 public:
     
-    new_spread_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr_vector just) : graph_update(up), m_template(temp), m_parent(parent), m_justifications(std::move(just)) { }
+    new_spread_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr_vector just) : graph_update(up), m_template(temp), m_parent(parent), m_justifications(just) { }
     
     bool apply() override;
     void undo() override;
@@ -67,12 +67,12 @@ class new_world_update : public graph_update {
     
     syntax_tree_node* m_template;
     modal_tree_node* m_parent;
+    const expr_vector m_justifications;
     modal_tree_node* m_created = nullptr;
-    expr_vector m_justifications;
     
 public:
     
-    new_world_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr_vector just) : graph_update(up), m_template(temp), m_parent(parent), m_justifications(std::move(just)) { }
+    new_world_update(lazy_up* up, syntax_tree_node* temp, modal_tree_node* parent, expr_vector just) : graph_update(up), m_template(temp), m_justifications(just), m_parent(parent) { }
     
     bool apply() override;
     void undo() override;
@@ -90,11 +90,8 @@ class connect_worlds_update :  public graph_update {
     std::vector<connection_info> m_to_undo;
     
 public:
-    
-    connect_worlds_update(lazy_up* up, const connection_info& connection, unsigned relation) : graph_update(up), m_connection(connection), m_relation(relation) {
-        SASSERT(connection.m_from->is_named());
-        SASSERT(connection.m_to->is_named());
-    }
+   
+    connect_worlds_update(lazy_up* up, const connection_info& connection, unsigned relation);
     
     bool apply() override;
     void undo() override;

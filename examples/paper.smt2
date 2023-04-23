@@ -1,0 +1,12 @@
+(declare-fun Human (World) Bool)
+(declare-fun Female (World) Bool)
+(declare-fun Male (World) Bool)
+(declare-fun age (World) Int)
+(declare-const ancestor Relation)
+(declare-const friend Relation)
+(declare-const max World)
+(declare-const marry World)
+
+(assert (global (=> (Human world) (and (box ancestor (and (or (Female world) (Male world)) (>= (age world) 16) (dia friend true))) (dia ancestor true)))))
+(assert (trans ancestor))
+(assert (and (reachable ancestor max marry) (Human max) (Female marry)))

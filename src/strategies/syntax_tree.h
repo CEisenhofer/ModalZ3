@@ -53,6 +53,10 @@ public:
     unsigned get_id() const {
         return m_id;
     }
+    
+    bool is_theory() const {
+        return m_relation == -2;
+    }
 
     const syntax_tree_node* get_parent() const {
         return m_parent;

@@ -68,10 +68,10 @@ bool modal_tree_node::add_named_child(const connection_info& connection, unsigne
         m_existing_children.resize(relation + 1);
     SASSERT(connection.m_from == this);
     if (!m_existing_children[relation].add(connection)) {
-        SASSERT(connection.m_to->m_existing_parents.size() > relation && connection.m_to->m_existing_parents[relation].contains(connection.m_to));
+        SASSERT(connection.m_to->m_existing_parents.size() > relation && connection.m_to->m_existing_parents[relation].contains(connection.m_from));
         return false;
     }
-    SASSERT(connection.m_to->m_existing_parents.size() <= relation || !connection.m_to->m_existing_parents[relation].contains(connection.m_to));
+    SASSERT(connection.m_to->m_existing_parents.size() <= relation || !connection.m_to->m_existing_parents[relation].contains(connection.m_from));
 
     if (connection.m_to->m_existing_parents.size() <= relation)
         connection.m_to->m_existing_parents.resize(relation + 1);

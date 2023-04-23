@@ -10,8 +10,9 @@ struct expr_info {
     unsigned arity; // don't use decl.arity()! might fail e.g., for "and"
     bool top_level; // directly after assert or a conjunction in assert
     bool no_scope; // not in the scope of a modal operator or similar
+    bool basic_ctx; // is the currently evaluated expression boolean?
 
-    syntax_tree_node* world;
+    syntax_tree_node* abs;
     
     explicit expr_info(const expr& e) :
         e(e),
@@ -19,7 +20,8 @@ struct expr_info {
         arity(e.num_args()),
         top_level(false),
         no_scope(false),
-        world(nullptr) {}
+        basic_ctx(true),
+        abs(nullptr) {}
     
     expr_info(const expr_info& other) :
         e(other.e),
@@ -27,7 +29,8 @@ struct expr_info {
         arity(other.arity),
         top_level(other.top_level),
         no_scope(other.no_scope),
-        world(other.world) {}
+        basic_ctx(other.basic_ctx),
+        abs(other.abs) {}
     
     expr_info& operator=(const expr_info& other) {
         e = other.e;
@@ -35,7 +38,8 @@ struct expr_info {
         arity = other.arity;
         top_level = other.top_level;
         no_scope = other.no_scope;
-        world = other.world;
+        basic_ctx = other.basic_ctx;
+        abs = other.abs;
         return *this;
     }
 };

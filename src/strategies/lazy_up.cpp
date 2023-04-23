@@ -66,6 +66,11 @@ void new_world_update::output(std::ostream & os) {
     os << "created world " <<  m_created->world_constant() << " with justification " << m_created->justification() << " reachable from " << m_parent->world_constant() << " via relation r" << m_template->get_relation();
 }
 
+connect_worlds_update::connect_worlds_update(lazy_up* up, const connection_info& connection, unsigned relation) : graph_update(up), m_connection(connection), m_relation(relation) { 
+    SASSERT(connection.m_from == m_up->m_modal_tree->get_root() || connection.m_from->is_named());
+    SASSERT(connection.m_to == m_up->m_modal_tree->get_root() || connection.m_to->is_named());
+}
+
 bool connect_worlds_update::apply() {
     if (!m_connection.m_from->add_named_child(m_connection, m_relation))
         return true; // There is nothing to do; they are already connected (e.g., ABox + transitivity both added that edge)
@@ -328,7 +333,7 @@ expr lazy_up::create_formula(const expr& e) {
     info.no_scope = true;
 
     m_syntax_tree = new syntax_tree(this);
-    info.world = m_syntax_tree->get_root();
+    info.abs = m_syntax_tree->get_root();
 
     delete m_modal_tree;
     m_modal_tree = new modal_tree(m_syntax_tree);
@@ -358,21 +363,30 @@ expr lazy_up::create_formula(const expr& e) {
             VERIFY(current.e.is_app());
             LOG("Parsing (2): " << current.e);
 
-            if (is_modal(current.decl)) {
-                SASSERT(is_box(current.decl));
+            if (is_modal(current.decl) || (current.basic_ctx && !is_basic_theory(current.decl))) {
+                SASSERT(current.decl.decl_kind() != Z3_OP_UNINTERPRETED || is_box(current.decl));
                 syntax_tree_node* existing;
-                if ((existing = current.world->get_child_by_expr(current.e)) == nullptr) {
+                bool modal = is_modal(current.decl);
+                if ((existing = current.abs->get_child_by_expr(current.e)) == nullptr) {
 
-                    unsigned relation_id = get_or_add_relation(current.e.arg(0));
+                    unsigned relation_id = modal ? get_or_add_relation(current.e.arg(0)) : -2;
 
-                    syntax_tree_node* new_node = m_syntax_tree->create_node(current.world, relation_id, current.e);
+                    syntax_tree_node* new_node = m_syntax_tree->create_node(current.abs, relation_id, current.e);
                     SASSERT(get_variable(new_node->get_aux().decl()) == -1);
                     m_uf_to_id[new_node->get_aux().decl()] = m_uf_to_id.size();
                     LOG("Adding: " << new_node->get_aux().decl().name().str());
 
-                    current.world = new_node;
-                    LOG("New potential world: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));
-                    current.e = current.e.arg(1);
+                    current.abs = new_node;
+                    if (modal) {
+                        current.e = current.e.arg(1);
+                        current.basic_ctx = true;
+                        LOG("New potential world: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));   
+                    }
+                    else {
+                        current.e = current.e;
+                        current.basic_ctx = false;
+                        LOG("New theory-abstraction: " << new_node->get_id() << " with parent " << (new_node->is_root() ? " root " : std::to_string(new_node->get_parent()->get_id())));
+                    }
                     current.decl = current.e.decl();
                     current.arity = current.e.num_args();
                     current.top_level = false;
@@ -381,15 +395,15 @@ expr lazy_up::create_formula(const expr& e) {
                     subformulas_to_process.push(current);
                 }
                 else
-                    current.world = existing;
+                    current.abs = existing;
 
-                m_processed_args.top().push_back(current.world->get_aux());
+                m_processed_args.top().push_back(current.abs->get_aux());
             }
             else if (is_global(current.decl)) {
                 if (!current.top_level)
                     throw parse_exception("\"global\" may only occur top-level");
                 syntax_tree_node* new_node = m_syntax_tree->create_node(current.e);
-                current.world = new_node;
+                current.abs = new_node;
                 LOG("New global constraint: " << new_node->get_id());
                 expr constr = current.e.arg(0);
                 current.e = constr;
@@ -409,11 +423,13 @@ expr lazy_up::create_formula(const expr& e) {
                 m_processed_args.top().push_back(ctx().bool_val(true));
             }
             else {
+                bool outer_basic = is_basic_theory(info.decl); // not info2! the basic_ctx is the context in which the element occurs
                 for (unsigned i = current.e.num_args(); i > 0; i--) {
                     expr_info info2(current.e.arg(i - 1));
-                    info2.world = current.world;
+                    info2.abs = current.abs;
                     info2.top_level = current.top_level && current.decl.decl_kind() == Z3_OP_AND;
                     info2.no_scope = current.no_scope;
+                    info2.basic_ctx = outer_basic;
                     expr_to_process.push(info2);
                 }
 
@@ -439,6 +455,10 @@ expr lazy_up::create_formula(const expr& e) {
                         modal_tree_node* w1 = is_placeholder(args[1].decl()) ? m_modal_tree->get_root() : m_modal_tree->get_or_create_named_node(args[1]);
                         modal_tree_node* w2 = is_placeholder(args[2].decl()) ? m_modal_tree->get_root() : m_modal_tree->get_or_create_named_node(args[2]);
                         get_or_add_relation(args[0]);
+                        z3::ast s = w1->world_constant();
+                        args.set(1, s);
+                        s = w2->world_constant();
+                        args.set(2, s);
                         m_processed_args.top().push_back(m_decls.reachable_uf(args));
                     }
                     else if (!is_world(app.decl.range()) && !is_relation(app.decl.range())) {
@@ -487,8 +507,8 @@ expr lazy_up::create_formula(const expr& e) {
         }
 
         expr t = m_processed_args.top().back();
-        info.world->set_template(t);
-        LOG("Generated: " << info.world->to_string() << " with aux: " << info.world->aux_to_string());
+        info.abs->set_template(t);
+        LOG("Generated: " << info.abs->to_string() << " with aux: " << info.abs->aux_to_string());
 
         VERIFY(m_processed_args.size() == 1);
         if (m_processed_args.top().size() != 1) {
@@ -537,8 +557,8 @@ void lazy_up::fixed(const expr& e, const expr& value) {
         if (is_reachable_intern(func)) {
             modal_tree_node* w1 = m_modal_tree->get_or_create_named_node(e.arg(1));
             modal_tree_node* w2 = m_modal_tree->get_or_create_named_node(e.arg(2));
-            SASSERT(w1->is_named());
-            SASSERT(w2->is_named());
+            SASSERT(w1 == m_modal_tree->get_root() || w1->is_named());
+            SASSERT(w2 == m_modal_tree->get_root() || w2->is_named());
             SASSERT(m_relation_to_id.contains(e.arg(0).decl()));
             // we will anyway not connect two named worlds automatically. We can ignore the negative case (the SAT core will deal with prop. conflicts)
             if (!v)
@@ -561,11 +581,18 @@ void lazy_up::fixed(const expr& e, const expr& value) {
         add_trail(new assignment_undo(world, var));
     
         syntax_tree_node* abs = m_syntax_tree->get_node(func);
-        if (abs) { // Modal operator; otw. just ordinary predicate
+        if (abs) { // Modal operator or theory; otw. just ordinary predicate
             z3::expr_vector just(ctx());
             just.push_back(e);
-            m_pending_updates.add(v ? (graph_update*)new new_spread_update(this, abs, world, just) : new new_world_update(this, abs, world, just));
-            add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));
+            if (abs->is_theory()) {
+                // theory
+                propagate(just, abs->instantiate(world->world_constant(), v));
+            }
+            else {
+                // modal
+                m_pending_updates.add(v ? (graph_update*)new new_spread_update(this, abs, world, just) : new new_world_update(this, abs, world, just));
+                add_trail(new added_graph_update_undo(m_pending_updates, m_pending_updates.back()));   
+            }
         }
     
         //if (m_trail_sz.empty()) // Root level; we won't have to revert them
@@ -691,13 +718,24 @@ void lazy_up::output_model(const model& model, std::ostream& ostream) {
     for (unsigned i = 0; i < sz; i++) {
         z3::func_decl f = model.get_const_decl(i);
         if (!is_world(f.range()) && !is_relation(f.range()))
-            ostream << f << ": " << model.get_const_interp(f) << "\n";
+            ostream << f.name().str() << ": " << model.get_const_interp(f) << "\n";
     }
     sz = model.num_funcs();
     for (unsigned i = 0; i < sz; i++) {
         z3::func_decl f = model.get_func_decl(i);
-        if (!is_world(f.range()) && !is_relation(f.range()) && (f.arity() == 0 || is_world(f.domain(0))))
-            ostream << f << ": " << model.get_func_interp(f) << "\n";
+        if (!is_world(f.range()) && !is_relation(f.range()) && (f.arity() == 0 || !is_world(f.domain(0)))) {
+            func_interp interpr = model.get_func_interp(f);
+            ostream << f.name().str() << ": \n";
+            for (unsigned j = 0; j < interpr.num_entries(); j++){
+                if (interpr.entry(j).num_args() > 0) {
+                    ostream << "\t" << interpr.entry(j).arg(0);
+                    for (unsigned k = 1; k < interpr.entry(j).num_args(); k++)
+                        ostream << " | " << interpr.entry(j).arg(k);
+                }
+                ostream << " -> " << interpr.entry(j).value() << "\n";
+            }
+            ostream << "\telse -> " << interpr.else_value() << "\n";
+        }
     }
 }
 
@@ -725,7 +763,6 @@ Z3_lbool lazy_up::model_check(const expr& e) {
     
     while (to_process.size() > 1) {
         const check_info current = to_process.top();
-        
         func_decl f = current.decl();
         Z3_decl_kind kind = f.decl_kind();
         bool ml = is_modal(f);
@@ -734,6 +771,13 @@ Z3_lbool lazy_up::model_check(const expr& e) {
         unsigned relation_id;
 
         LOG("Checking " << current.original_expr << " with arg " << current.processed_idx);
+        
+        if (is_placeholder(current.decl())) {
+            to_process.pop();
+            to_process.top().args.push_back(m.eval(current.world->world_constant()));
+            LOG("Current world is: " << current.world->world_constant() << " (internal index: " << current.world->get_internal_idx() << ")");
+            continue;
+        }
         
         if (is_trans(f)) {
             to_process.pop();
@@ -773,7 +817,7 @@ Z3_lbool lazy_up::model_check(const expr& e) {
             to_process.top().args.push_back(m_ctx.bool_val(i == sz));
             continue;
         }
-        else if (!ml && !global && !reachable && kind == Z3_OP_UNINTERPRETED) {
+        else if (!ml && !global && !reachable && kind == Z3_OP_UNINTERPRETED && current.original_expr.get_sort().is_bool()) {
             // Prop. variables
             to_process.pop();
             if (current.original_expr.num_args() > 0 && is_world(f.domain(0))) {
@@ -920,7 +964,7 @@ Z3_lbool lazy_up::model_check(const expr& e) {
                 else if (args[0].is_false())
                     to_process.top().args.push_back(ctx().bool_val(true));
                 else
-                    to_process.top().args.push_back(m.eval(current.original_expr, true));
+                    to_process.top().args.push_back(m.eval(!args[0], true));
             }
             else if (kind == Z3_OP_IMPLIES) {
                 SASSERT(args.size() == 2);
@@ -929,23 +973,23 @@ Z3_lbool lazy_up::model_check(const expr& e) {
                 if (args[0].is_true() && args[1].is_false())
                     to_process.top().args.push_back(ctx().bool_val(false));
                 else
-                    to_process.top().args.push_back(m.eval(current.original_expr, true));
+                    to_process.top().args.push_back(m.eval(implies(args[0], args[1])));
             }
             else if (kind == Z3_OP_EQ) {
                 SASSERT(args.size() == 2);
-                if (
-                        (args[0].is_true() && args[1].is_true()) ||
-                        (args[0].is_false() && args[1].is_false()))
-                    to_process.top().args.push_back(ctx().bool_val(true));
-                else if (
-                        (args[0].is_false() && args[1].is_true()) ||
-                        (args[0].is_true() && args[1].is_false()))
-                    to_process.top().args.push_back(ctx().bool_val(false));
-                else
-                    to_process.top().args.push_back(m.eval(current.original_expr, true));;
+                expr a1 = args[0]; 
+                expr a2 = args[1]; 
+                expr res = m.eval(a1 == a2, true);
+                LOG("Checking equivalence of " << a1 << " = " << a2 << ": " << res);
+                to_process.top().args.push_back(res);
             }
-            else 
-                to_process.top().args.push_back(m.eval(current.original_expr, true));;
+            else {
+                z3::expr_vector eval_args(m_ctx);
+                for (const auto& eval_arg : args)
+                    eval_args.push_back(eval_arg);
+                to_process.top().args.push_back(m.eval(current.original_expr.decl()(eval_args)));
+            }
+            LOG("Evaluated to: " << to_process.top().args.back());
             continue;
         }
         

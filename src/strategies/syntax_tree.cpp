@@ -43,14 +43,14 @@ const z3::sort& syntax_tree::get_world_sort() const {
 
 syntax_tree_node* syntax_tree::create_node(syntax_tree_node* parent, unsigned relation, const z3::expr& orig_subformula) {
     if (parent == nullptr) {
-        SASSERT(relation == -1);
+        SASSERT(relation == -1 || relation == -2);
         syntax_tree_node* node = new syntax_tree_node(m_nodes.size(), nullptr, relation, orig_subformula.ctx().bool_val(true));
         m_nodes.push_back(node);
         return node;
     }
     z3::sort domain = get_world_sort();
     Z3_sort z3_domain = domain;
-    z3::func_decl decl(ctx(), Z3_mk_fresh_func_decl(ctx(), "box", 1, &z3_domain, ctx().bool_sort()));
+    z3::func_decl decl(ctx(), Z3_mk_fresh_func_decl(ctx(), relation == -2 ? "theory" : "box", 1, &z3_domain, ctx().bool_sort()));
     z3::sort_vector domain_vector(ctx());
     domain_vector.push_back(domain);
     decl = ctx().user_propagate_function(decl.name(), domain_vector, ctx().bool_sort());
