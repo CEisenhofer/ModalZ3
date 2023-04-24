@@ -53,3 +53,15 @@ e.g.,
 This can be read as "`p` is true in world `w1` and there is a r-reachable world from my initial world (implicitly `w0`) in which `p` is true". For more examples see the `examples` folder.
 
 In our implementation we can express all problems of the S-description logic and additionally connectives over ABoxes (e.g., `(or (p w1) (p w2))`).
+
+# Cheatsheet
+
+For translating some formula given in the S-description logic use the following translation
+
+| DL-Element                     | SMT-LIB                                                     |
+|--------------------------------|-------------------------------------------------------------|
+| TBox -- F1 $\sqsubseteq$ F2    | (assert (global (=> F1 F2)))                                |
+| ABox -- w : F                  | (assert (global (=> (= world w) F))                         |
+| ABox -- w : F [alternative]    | (assert F) [with replacing "world" by "w" in F if possible] |
+| ABox -- r : (w1, w2)           | (assert (reachable w1 w2))                                  |
+| RBox -- trans(r)               | (assert (trans r))                                          |
