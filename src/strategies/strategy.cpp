@@ -50,7 +50,7 @@ bool strategy::is_basic_theory(const func_decl& decl) const {
     if (kind == Z3_OP_TRUE || kind == Z3_OP_FALSE || kind == Z3_OP_AND || kind == Z3_OP_OR || kind == Z3_OP_IMPLIES || kind == Z3_OP_NOT || kind == Z3_OP_ITE || kind == Z3_OP_UNINTERPRETED)
         return true;
     if (kind == Z3_OP_EQ)
-        return decl.domain(0).is_bool();
+        return decl.domain(0).is_bool() || is_world(decl.domain(0)) /* we do not want to pack (= world w) into a theory atom (for now...) */;
     return false;
 }
 
