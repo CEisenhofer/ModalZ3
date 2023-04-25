@@ -1,5 +1,7 @@
 #include <cstring>
 #include <iostream>
+#include <fstream>
+#include <thread>
 
 #include "iterative_deepening_quant.h"
 #include "lazy_up.h"
@@ -19,18 +21,30 @@ unsigned cnt_str(const std::string& s, const std::string& target) {
    return cnt;
 }
 
-void test() {
+struct args {
+    unsigned min_relations = 1;
+    unsigned max_relations = MAX_RELATIONS;
+    unsigned repetitions = RANDOM_FORMULAS;
+    unsigned min_modals = 2;
+    unsigned max_modals = 5;
+    unsigned min_length = 100;
+    unsigned max_length = 500;
+    unsigned max_depth = 5;
+};
+
+void test(int idx, const args& args) {
 
     context ctx;
     modal_decls decls = modal_decls::create_default(ctx);
 
     //std::vector<int> world_cnt[3]; // some statistics
     unsigned world_cnt[3]; // some statistics
+    std::vector<unsigned> time[3]; // some statistics
     memset(world_cnt, 0, sizeof(unsigned) * 3);
 
-    for (unsigned r = 1; r <= MAX_RELATIONS; r++) {
+    for (unsigned r = args.min_relations; r <= args.max_relations; r++) {
         random_formula rf(ctx, decls, r);
-        rf.set_max_depth(6);
+        rf.set_max_depth(args.max_depth);
         
 #if 0
         for (unsigned i = 0; i < RANDOM_FORMULAS; i++) {
@@ -61,18 +75,19 @@ void test() {
         std::cout << "Preprocessing succeeded!\n\n";
 #endif
         
-        for (unsigned i = 0; i < RANDOM_FORMULAS; i++) {
-            if (i % 10 == 0)
-                std::cout << "Iteration " << i << std::endl; 
+        for (unsigned i = 0; i < args.repetitions; i++) {
+            if (idx < 0 && i % 10 == 0)
+                std::cout << "Iteration " << i << std::endl;
             rep:
             expr e = rf.get();
             {
                 standard_translation simplifier(ctx, decls);
                 e = simplifier.simplify(e);
 
-                if (e.to_string().length() < 50
-                || e.to_string().length() > 300
-                || cnt_str(e.to_string(), "box") < 3
+                if (e.to_string().length() < args.min_length
+                || e.to_string().length() > args.max_length
+                || cnt_str(e.to_string(), "box") < args.min_modals
+                || cnt_str(e.to_string(), "box") > args.max_modals
                 ) // hopefully avoid trivial examples
                     goto rep;
             }
@@ -130,11 +145,15 @@ void test() {
                 }
             }
 
-#if 1
-            std::cout << std_translation.solving_time().count() << " STD" << std::endl;
-            std::cout << iterative_deepening.solving_time().count() << " ID" << std::endl;
-            std::cout << lazy_up.solving_time().count() << " UP" << std::endl;
-#endif
+            time[0].push_back(std_translation.solving_time().count());
+            time[1].push_back(iterative_deepening.solving_time().count());
+            time[2].push_back(lazy_up.solving_time().count());
+
+            if (idx < 0) {
+                std::cout << std_translation.solving_time().count() << " STD" << std::endl;
+                std::cout << iterative_deepening.solving_time().count() << " ID" << std::endl;
+                std::cout << lazy_up.solving_time().count() << " UP" << std::endl;
+            }
             
             if (result_std_translation == sat) {
                 /*world_cnt[0].push_back(std_translation.domain_size());
@@ -148,12 +167,102 @@ void test() {
         }
     }
 
-    std::cout << "STD: " << world_cnt[0] << std::endl;
-    std::cout << "ID : " << world_cnt[1] << std::endl;
-    std::cout << "UPE: " << world_cnt[2] << std::endl;
+    std::cout << "Thread " << abs(idx) << " finished\n";
+
+    if (idx < 0) {
+        std::cout << "World counts:\n";
+        std::cout << "STD: " << world_cnt[0] << std::endl;
+        std::cout << "ID : " << world_cnt[1] << std::endl;
+        std::cout << "UPE: " << world_cnt[2] << std::endl;
+    }
+    else {
+        std::ofstream out((std::string("out") + std::to_string(idx) + ".txt").c_str());
+        for (unsigned i = 0; i < args.repetitions; i++)
+            out << time[0][i] << ";" << time[1][i] << ";" << time[2][i] << "\n";
+        out.close();
+    }
 }
 
-int main() {
-    test();
+#define ERROR do { std::cout << "Could not parse command lines.\n" << "Usage: [-file] [-min_rel=x] [-max_rel=x] [-rep=x] [-min_modals=x] [-max_modals=x] [-min_length=x] [-max_length=x]" << std::endl; exit(-1); } while(false)
+
+int main(int argc, char** argv) {
+    unsigned start = 1;
+    unsigned threads = 1;
+    bool file = false;
+
+    args args;
+    // -threads=4 -rep=100 -min_modals=2 -max_modals=5 -min_length=100 -max_length=500
+    for (; start < argc; start++) {
+        if (strncmp(argv[start], "-file", 5) == 0) {
+            file = true;
+            continue;
+        }
+        if (strncmp(argv[start], "-threads=", 9) == 0) {
+            threads = atoi(argv[start] + 9);
+            continue;
+        }
+        if (strncmp(argv[start], "-min_rel=", 9) == 0) {
+            args.min_relations = atoi(argv[start] + 9);
+            continue;
+        }
+        if (strncmp(argv[start], "-max_rel=", 9) == 0) {
+            args.max_relations = atoi(argv[start] + 9);
+            continue;
+        }
+        if (strncmp(argv[start], "-rep=", 5) == 0) {
+            args.repetitions = atoi(argv[start] + 5);
+            continue;
+        }
+        if (strncmp(argv[start], "-min_modals=", 12) == 0) {
+            args.min_modals = atoi(argv[start] + 12);
+            continue;
+        }
+        if (strncmp(argv[start], "-max_modals=", 12) == 0) {
+            args.max_modals = atoi(argv[start] + 12);
+            continue;
+        }
+        if (strncmp(argv[start], "-min_length=", 12) == 0) {
+            args.min_length = atoi(argv[start] + 12);
+            continue;
+        }
+        if (strncmp(argv[start], "-max_length=", 12) == 0) {
+            args.max_length = atoi(argv[start] + 12);
+            continue;
+        }
+        if (strncmp(argv[start], "-max_depth=", 11) == 0) {
+            args.max_depth = atoi(argv[start] + 11);
+            continue;
+        }
+        ERROR;
+    }
+
+    std::cout
+        << "Running:\n"
+        << "File:" << file << "\n"
+        << "Repetitions: " << args.repetitions << " on " << threads << " threads\n"
+        << "Length: [" << args.min_length << "; " << args.max_length << "]\n"
+        << "Relations: [" << args.min_relations << "; " << args.max_relations << "]\n"
+        << "Modalities: [" << args.min_modals << "; " << args.max_modals << "]\n"
+        << "Max Depth: " << args.max_depth << "\n"
+        << std::endl;
+
+    if (
+            args.min_length > args.max_length ||
+            args.min_modals > args.max_modals ||
+            args.min_relations > args.max_relations ||
+            args.min_modals < 0 || args.min_length < 0 || args.min_relations < 0
+    ) {
+        ERROR;
+    }
+
+    std::vector<std::thread> thread_list;
+
+    for (unsigned i = 0; i < threads; i++) {
+        std::thread thread(test, file ? i + 1 : -(i + 1), args);
+        thread_list.push_back(std::move(thread));
+    }
+    for (unsigned i = 0; i < threads; i++) {
+        thread_list[i].join();
+    }
     return 0;
 }
