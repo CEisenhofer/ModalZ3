@@ -88,8 +88,10 @@ void test(int idx, const args& args) {
                 || e.to_string().length() > args.max_length
                 || cnt_str(e.to_string(), "box") < args.min_modals
                 || cnt_str(e.to_string(), "box") > args.max_modals
-                ) // hopefully avoid trivial examples
+                ) { // hopefully avoid trivial examples
+                    // std::cout << "Failed to generate; repeating (" << e.to_string().length() << "; " << cnt_str(e.to_string(), "box") << ")" << std::endl;
                     goto rep;
+                }
             }
 
             //std::cout << e << "\n\n" << std::endl;
@@ -183,7 +185,7 @@ void test(int idx, const args& args) {
     }
 }
 
-#define ERROR do { std::cout << "Could not parse command lines.\n" << "Usage: [-file] [-min_rel=x] [-max_rel=x] [-rep=x] [-min_modals=x] [-max_modals=x] [-min_length=x] [-max_length=x]" << std::endl; exit(-1); } while(false)
+#define ERROR do { std::cout << "Could not parse command lines.\n" << "Usage: [-file] [-threads=x] [-max_depth=x] [-min_rel=x] [-max_rel=x] [-rep=x] [-min_modals=x] [-max_modals=x] [-min_length=x] [-max_length=x]" << std::endl; exit(-1); } while(false)
 
 int main(int argc, char** argv) {
     unsigned start = 1;
@@ -238,7 +240,7 @@ int main(int argc, char** argv) {
 
     std::cout
         << "Running:\n"
-        << "File:" << file << "\n"
+        << "File: " << (file ? "true" : "false") << "\n"
         << "Repetitions: " << args.repetitions << " on " << threads << " threads\n"
         << "Length: [" << args.min_length << "; " << args.max_length << "]\n"
         << "Relations: [" << args.min_relations << "; " << args.max_relations << "]\n"

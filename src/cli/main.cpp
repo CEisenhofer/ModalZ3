@@ -122,12 +122,14 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         strategy* str = it->second(ctx);
+        str->set_is_benchmark(true);
         if (limit_time)
             str->set_timeout(limit_time);
         if (limit_mem)
             str->set_memout(limit_mem);
         check_result res = str->check(z3::mk_and(parsed));
         str->output_state(std::cout);
+        std::cout << "Solving-Time: " << str->solving_time().count() << std::endl;
 
         if (mode == "upl" && res == z3::sat) {
             if (str->model_check(z3::mk_and(parsed)) != Z3_L_TRUE) {
