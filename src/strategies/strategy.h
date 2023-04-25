@@ -15,7 +15,6 @@ using namespace z3;
 struct modal_decls {
 
     friend class lazy_up;
-    friend class lazy_up;
 
     sort world_sort, relation_sort;
     func_decl dia, box;

@@ -13,6 +13,8 @@ expr standard_translation::create_formula(const expr& e) {
     std::stack<expr_info> expr_to_process;
     expr_info info(e);
     info.top_level = true;
+    info.no_scope = true;
+
     expr_to_process.push(info);
 
     SASSERT(m_processed_args.empty());
@@ -40,20 +42,20 @@ expr standard_translation::create_formula(const expr& e) {
         m_processed_args.push({});
 
         while (!m_apply_list.empty() && (m_apply_list.top().arity <= m_processed_args.top().size())) {
-            expr_info app = m_apply_list.top();
+            current = m_apply_list.top();
             m_apply_list.pop();
             expr_vector args(m_ctx);
 
-            LOG("Processing (2) " << app.decl.name() << " / " << app.arity << (app.arity > 0 ? " with" : ""));
-            for (unsigned i = 0; i < app.arity; i++) {
+            LOG("Processing (2) " << current.decl.name() << " / " << current.arity << (current.arity > 0 ? " with" : ""));
+            for (unsigned i = 0; i < current.arity; i++) {
                 args.push_back(m_processed_args.top()[i]);
                 LOG("\t" << args.back());
             }
             m_processed_args.pop();
 
-            if (app.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
-                if (is_modal(app.decl)) { // Modal operator
-                    expr relation = app.e.arg(0);
+            if (current.decl.decl_kind() == Z3_OP_UNINTERPRETED) {
+                if (is_modal(current.decl)) { // Modal operator
+                    expr relation = current.e.arg(0);
                     if (!relation.is_const())
                         throw parse_exception("Relations have to be constants unlike " + relation.to_string());
                     if (!m_relation_to_id.contains(relation.decl())) {
@@ -61,7 +63,7 @@ expr standard_translation::create_formula(const expr& e) {
                         m_relation_list.push_back(relation.decl());
                     }
 
-                    SASSERT(eq(app.decl, m_decls.box));
+                    SASSERT(eq(current.decl, m_decls.box));
                     
                     expr new_world = m_variables.back();
                     m_variables.pop_back();
@@ -70,12 +72,27 @@ expr standard_translation::create_formula(const expr& e) {
                     LOG("Created: " << forall);
                     m_processed_args.top().push_back(forall);
                 }
-                else if (eq(app.decl, m_decls.global)) {
+                else if (is_global(current.decl)) {
                     if (!current.top_level)
-                        throw parse_exception("\"global\" may only occur top-level");
+                        throw parse_exception("\"global\" may only occur top-level: " + current.e);
                     expr new_world = m_variables.back();
                     m_variables.pop_back();
-                    expr forall = z3::forall(new_world, implies(args[0], args[1]));
+                    expr forall = z3::forall(new_world, args[0]);
+                    LOG("Created: " << forall);
+                    m_processed_args.top().push_back(forall);
+                }
+                else if (is_trans(current.decl)) {
+                    if (!current.top_level)
+                        throw parse_exception("\"trans\" may only occur top-level: " + current.e);
+                    expr new_world = m_variables.back();
+                    m_variables.pop_back();
+                    expr relation = current.e.arg(0);
+                    expr x = expr(m_ctx, Z3_mk_fresh_const(m_ctx, "var", m_decls.world_sort));
+                    expr y = expr(m_ctx, Z3_mk_fresh_const(m_ctx, "var", m_decls.world_sort));
+                    expr z = expr(m_ctx, Z3_mk_fresh_const(m_ctx, "var", m_decls.world_sort));
+
+                    expr forall = z3::forall(x, y, z,
+                                             implies(m_decls.reachable(relation, x, y) & m_decls.reachable(relation, y, z), m_decls.reachable(relation, x, z)));
                     LOG("Created: " << forall);
                     m_processed_args.top().push_back(forall);
                 }
@@ -90,16 +107,16 @@ expr standard_translation::create_formula(const expr& e) {
                         args.set(0, x);
                     }
 
-                    func_decl new_func = m_ctx.function(app.decl.name(), domain, app.decl.range());
+                    func_decl new_func = m_ctx.function(current.decl.name(), domain, current.decl.range());
                     m_processed_args.top().push_back(new_func(args));
-                    if (!m_uf_to_id.contains(app.decl)) {
-                        m_uf_list.push_back(app.decl);
-                        m_uf_to_id[app.decl] = m_uf_to_id.size();
+                    if (!m_uf_to_id.contains(current.decl)) {
+                        m_uf_list.push_back(current.decl);
+                        m_uf_to_id[current.decl] = m_uf_to_id.size();
                     }
                 }
             }
             else
-                m_processed_args.top().push_back(app.decl(args));
+                m_processed_args.top().push_back(current.decl(args));
         }
     }
 
@@ -135,9 +152,9 @@ void standard_translation::output_model(const model& model, std::ostream& ostrea
     expr_vector domain = expr_vector(m_ctx, domain_native);
     for (const auto& r : m_relation_list) {
         ostream << "Relation " << r.name().str() << ":\n";
-        unsigned w1i = 0; 
+        unsigned w1i = (unsigned)-1;
         for (const auto& w1 : domain) {
-            unsigned w2i = 0;
+            unsigned w2i = (unsigned)-1;
             w1i++;
             unsigned output_cnt = 0;
             for (const auto& w2 : domain) {

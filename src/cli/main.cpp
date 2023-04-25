@@ -9,11 +9,12 @@
 #include "iterative_deepening_unrolled.h"
 #include "lazy_up.h"
 #include "standard_translation.h"
+#include "parse_exception.h"
 
 const char* HELP =
 " [-m=size_in_mb] [-t=timeout_in_ms] [-r] Mode File\n"
 "Solves a multi-modal formula\n\n"
-"Mode\t one of: std (std translation), id (iterative deepening), id2 (iterative deepening with unrolling), upl (user-propagator; lazy), upe (user-propagator; eager) [use \"upe\"; the other are for comparison only]\n"
+"Mode\t one of: std (std translation), id (iterative deepening), id2 (iterative deepening with unrolling), upl (user-propagator; lazy) [use \"upl\"; the other are for comparison only]\n"
 "File\t Path to an SMTLIB2 set_is_benchmark\n";
 
 int main(int argc, char** argv) {
@@ -127,17 +128,23 @@ int main(int argc, char** argv) {
             str->set_timeout(limit_time);
         if (limit_mem)
             str->set_memout(limit_mem);
-        check_result res = str->check(z3::mk_and(parsed));
-        str->output_state(std::cout);
-        std::cout << "Solving-Time: " << str->solving_time().count() << std::endl;
+        try {
+            check_result res = str->check(z3::mk_and(parsed));
+            str->output_state(std::cout);
+            std::cout << "Solving-Time: " << str->solving_time().count() << std::endl;
 
-        if (mode == "upl" && res == z3::sat) {
-            if (str->model_check(z3::mk_and(parsed)) != Z3_L_TRUE) {
-                std::cout << "FAILED to check model" << std::endl;
+            if (mode == "upl" && res == z3::sat) {
+                if (str->model_check(z3::mk_and(parsed)) != Z3_L_TRUE) {
+                    std::cout << "FAILED to check model" << std::endl;
+                }
+                else {
+                    std::cout << "SUCCESSFULLY checked model" << std::endl;
+                }
             }
-            else {
-                std::cout << "SUCCESSFULLY checked model" << std::endl;
-            }
+        } catch (const parse_exception& e) {
+            delete str;
+            std::cerr << "Error: " << e.what() << std::endl;
+            return -1;
         }
 
 #if 0
