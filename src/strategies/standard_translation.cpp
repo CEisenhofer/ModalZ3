@@ -28,8 +28,10 @@ expr standard_translation::create_formula(const expr& e) {
         VERIFY(current.e.is_app());
         LOG("Parsing (2): " << current.e);
         
-        if (is_modal(current.decl) || eq(current.decl, m_decls.global)) 
+        if (is_modal(current.decl) || is_global(current.decl)) {
+            LOG("Adding variable for " << current.e);
             m_variables.push_back(fresh_world_constant());
+        }
 
         for (unsigned i = current.e.num_args(); i > 0; i--) {
             expr_info info2(current.e.arg(i - 1));
@@ -85,7 +87,6 @@ expr standard_translation::create_formula(const expr& e) {
                     if (!current.top_level)
                         throw parse_exception("\"trans\" may only occur top-level: " + current.e);
                     expr new_world = m_variables.back();
-                    m_variables.pop_back();
                     expr relation = current.e.arg(0);
                     expr x = expr(m_ctx, Z3_mk_fresh_const(m_ctx, "var", m_decls.world_sort));
                     expr y = expr(m_ctx, Z3_mk_fresh_const(m_ctx, "var", m_decls.world_sort));
@@ -101,10 +102,11 @@ expr standard_translation::create_formula(const expr& e) {
                     for (const z3::expr& arg : args)
                         domain.push_back(arg.get_sort());
                     if (!args.empty() && z3::eq(args[0].get_sort(), m_decls.world_sort)) {
-                        if (!z3::eq(args[0].decl(), m_decls.placeholder))
-                            throw parse_exception("Currently not supporting ABox/complex world terms: " + args.to_string());
-                        z3::expr x = m_variables.back();
-                        args.set(0, x);
+                        if (z3::eq(args[0].decl(), m_decls.placeholder)) {
+                            z3::expr x = m_variables.back();
+                            args.set(0, x);
+                            // throw parse_exception("Currently not supporting ABox/complex world terms: " + args.to_string());
+                        }
                     }
 
                     func_decl new_func = m_ctx.function(current.decl.name(), domain, current.decl.range());
