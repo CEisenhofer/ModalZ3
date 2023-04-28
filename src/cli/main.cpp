@@ -1,6 +1,7 @@
 #include <cstring>
 #include <iterator>
 #include <filesystem>
+#include <fstream>
 #include <string_view>
 #include <vector>
 #include <z3++.h>
@@ -12,7 +13,7 @@
 #include "parse_exception.h"
 
 const char* HELP =
-" [-m=size_in_mb] [-t=timeout_in_ms] [-r] Mode File\n"
+" [-m=size_in_mb] [-t=timeout_in_ms] [-r] [-l=log_file] Mode File\n"
 "Solves a multi-modal formula\n\n"
 "Mode\t one of: std (std translation), id (iterative deepening), id2 (iterative deepening with unrolling), upl (user-propagator; lazy) [use \"upl\"; the other are for comparison only]\n"
 "File\t Path to an SMTLIB2 set_is_benchmark\n";
@@ -22,6 +23,7 @@ int main(int argc, char** argv) {
     unsigned start = 1;
     unsigned limit_mem = 0;
     unsigned limit_time = 0;
+    std::string log_file;
     bool recursive = false;
     for (; start < argc; start++) {
         if (strncmp(argv[start], "-m=", 3) == 0) {
@@ -36,10 +38,21 @@ int main(int argc, char** argv) {
             recursive = true;
             continue;
         }
+        if (strncmp(argv[start], "-l=", 3) == 0) {
+            log_file = argv[start] + 3;
+            if (log_file.starts_with('"'))
+                log_file = log_file.substr(1);
+            if (log_file.ends_with('"'))
+                log_file.pop_back();
+            continue;
+        }
         break;
     }
     if (argc - start != 2) {
-        std::cerr << "wrong number of arguments" << std::endl;
+        std::cerr << "wrong number of mandatory arguments: " << argc - start << std::endl;
+        for (; start < argc; start++) {
+            std::cerr << "\t" << argv[start] << std::endl;
+        }
         std::cerr << argv[0] << HELP;
         return EXIT_FAILURE;
     }
@@ -74,6 +87,17 @@ int main(int argc, char** argv) {
     }
     else {
         paths.emplace_back(path);
+    }
+
+    std::ofstream* out = nullptr;
+    if (!log_file.empty()) {
+        std::cout << "Putting results to " << log_file << std::endl;
+        try {
+            out = new std::ofstream(log_file);
+        } catch (std::exception& e) {
+            std::cerr << "Could not create log-file" << std::endl;
+            return -1;
+        }
     }
     
     for (const std::string& input : paths) {
@@ -129,8 +153,18 @@ int main(int argc, char** argv) {
         if (limit_mem)
             str->set_memout(limit_mem);
         try {
+            if (out)
+                *out << input.c_str() << ";";
             check_result res = str->check(z3::mk_and(parsed));
             str->output_state(std::cout);
+            if (out) {
+                if (res == z3::unknown)
+                    *out << "-1;-1\n";
+                else if (res == z3::unsat)
+                    *out << str->solving_time().count() << ";0\n";
+                else
+                    *out << str->solving_time().count() << ";" << str->domain_size() << "\n";
+            }
             std::cout << "Solving-Time: " << str->solving_time().count() << std::endl;
 
             if (mode == "upl" && res == z3::sat) {
@@ -144,6 +178,10 @@ int main(int argc, char** argv) {
         } catch (const parse_exception& e) {
             delete str;
             std::cerr << "Error: " << e.what() << std::endl;
+            if (out) {
+                *out << "Crashed!\n";
+                delete out;
+            }
             return -1;
         }
 
@@ -164,6 +202,9 @@ int main(int argc, char** argv) {
         
         delete str;
     }
-    
+
+    if (out)
+        delete out;
+
     return 0;
 }
