@@ -11,8 +11,9 @@ check_result iterative_deepening_quant::solve(const expr& e) {
         LOG("Trying existing_size " << num_worlds << "...");
         expr_vector assumptions(ctx());
         assumptions.push_back(forall(x, constraint));
-        if (m_solver.check(assumptions) == sat) {
-             return sat;
+        check_result result;
+        if ((result = m_solver.check(assumptions)) != unsat) {
+             return result;
         }
 
         expr_vector core = m_solver.unsat_core();
