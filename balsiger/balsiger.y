@@ -122,18 +122,24 @@ unsigned num_ids = 0;
 %token END2
 
 %%
-input : input1 | input2
+input : input11 | input12 | input21 | input22
 
-input2: START1 unary END1 {
+input11: START1 unary END1 {
      printf("(assert ");
      print_expr($2);
      printf(")\n");
 };
 
-input1: START2 DOT unary DOT END2 DOT {
+input12: START1 END1 {
+};
+
+input21: START2 DOT unary DOT END2 DOT {
      printf("(assert ");
      print_expr($3);
      printf(")\n");
+};
+
+input22: START2 DOT DOT END2 DOT {
 };
 
 binary: or | and | imp | eqv | unary;

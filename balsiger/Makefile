@@ -7,4 +7,4 @@ lex.yy.c: balsiger.l y.tab.h
 	$(LEX) balsiger.l
 
 balsiger: y.tab.o lex.yy.o
-	$(CC) -o $@ $^
+	$(CC) -Wl,--stack,16777216 -o $@ $^
