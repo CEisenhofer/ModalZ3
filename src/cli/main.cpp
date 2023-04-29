@@ -2,6 +2,7 @@
 #include <iterator>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string_view>
 #include <vector>
 #include <z3++.h>
@@ -58,8 +59,8 @@ int main(int argc, char** argv) {
     }
     std::string_view mode(argv[start]);
     const char* path = argv[start + 1];
-    std::vector<std::string> paths;
-    std::stack<std::string> to_explore;
+    std::set<std::string> paths;
+    std::set<std::filesystem::path> to_explore;
     
     if (!std::filesystem::exists(path)) {
         std::cerr << "path does not exist" << std::endl;
@@ -68,25 +69,25 @@ int main(int argc, char** argv) {
     }
     
     if (std::filesystem::is_directory(path)) {
-        to_explore.push({ path });
+        to_explore.insert(path);
         while (!to_explore.empty()) {
-            std::string current = to_explore.top();
-            to_explore.pop();
+            std::filesystem::path current = *to_explore.begin();
+            to_explore.erase(to_explore.begin());
             for (const auto& entry : std::filesystem::directory_iterator(current)) {
                 if (entry.is_directory()) {
                     if (recursive)
-                        to_explore.push(entry.path().string());
+                        to_explore.insert(entry.path());
                 }
                 else {
                     std::string ext = entry.path().extension().string();
                     if (entry.is_regular_file() && ext == ".smt2")
-                        paths.push_back(entry.path().string());
+                        paths.insert(entry.path().string());
                 }
             }
         }
     }
     else {
-        paths.emplace_back(path);
+        paths.insert(path);
     }
 
     std::ofstream* out = nullptr;
