@@ -116,11 +116,21 @@ unsigned num_ids = 0;
 %token BOX
 %token DIA
 %token DOT
-%token START
-%token END
+%token START1
+%token START2
+%token END1
+%token END2
 
 %%
-input: START DOT unary DOT END DOT {
+input : input1 | input2
+
+input2: START1 unary END1 {
+     printf("(assert ");
+     print_expr($2);
+     printf(")\n");
+};
+
+input1: START2 DOT unary DOT END2 DOT {
      printf("(assert ");
      print_expr($3);
      printf(")\n");

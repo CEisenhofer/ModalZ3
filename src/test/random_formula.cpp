@@ -1,45 +1,66 @@
+#include <unordered_set>
+
 #include "assertion.h"
 #include "random_formula.h"
 
 decltype(random_formula::m_cases) random_formula::create_cases(random_formula* f) {
     decltype(random_formula::m_cases) v;
     // prop. occ.; mean args; generation-fct
-    v.emplace_back(1, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.bool_val(false); });
-    v.emplace_back(1, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.bool_val(true); });
-    v.emplace_back(2, 3, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+    if (f->m_simplified) {
+        v.emplace_back(1, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.dia(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.m_ctx.bool_val(true)); });
+        //v.emplace_back(1, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.box(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.m_ctx.bool_val(false)); });        
+    }
+    else {
+        v.emplace_back(1, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.bool_val(false); });
+        v.emplace_back(1, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_ctx.bool_val(true); });
+    }
+    v.emplace_back(4, 3, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+        std::unordered_set<expr, expr_not_hash, expr_not_eq> already;
         expr_vector args(f.m_ctx);
         unsigned cnt = (unsigned)f.m_arg_cnt_gen(f.m_mt);
-        if (cnt == 0)
-            cnt = 1;
+        if (cnt < 1 + f.m_simplified)
+            cnt = 1 + f.m_simplified;
         for (unsigned i = 0; i < cnt; i++)
-            args.push_back(f.get_subexpr(v, d));
+            args.push_back(f.get_subexpr(v, d, already));
         
         return mk_and(args); 
     });
-    v.emplace_back(2, 3, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+    v.emplace_back(4, 3, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+        std::unordered_set<expr, expr_not_hash, expr_not_eq> already;
         expr_vector args(f.m_ctx);
         unsigned cnt = (unsigned)f.m_arg_cnt_gen(f.m_mt);
-        if (cnt == 0)
-            cnt = 1;
+        if (cnt < 1 + f.m_simplified)
+            cnt = 1 + f.m_simplified;
         for (unsigned i = 0; i < cnt; i++)
-            args.push_back(f.get_subexpr(v, d));
+            args.push_back(f.get_subexpr(v, d, already));
         
         return mk_or(args); 
     });
-    v.emplace_back(1, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return implies(f.get_subexpr(v, d), f.get_subexpr(v, d)); });
-    v.emplace_back(3, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return !f.get_subexpr(v, d); });
-    v.emplace_back(3, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.dia(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
-    v.emplace_back(3, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.box(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
-    v.emplace_back(5, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+    v.emplace_back(2, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+        std::unordered_set<expr, expr_not_hash, expr_not_eq> already;
+        return implies(f.get_subexpr(v, d, already), f.get_subexpr(v, d, already)); });
+    v.emplace_back(4, 2, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+        expr e = f.get_subexpr(v, d);
+        if (f.m_simplified && e.is_not())
+            return e;
+        return !e;
+    });
+    v.emplace_back(5, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.dia(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
+    v.emplace_back(5, 1, [](random_formula& f, std::vector<func_decl>& v, unsigned d) { return f.m_decls.box(f.m_relations[f.m_general_gen(f.m_mt) % f.m_relations.size()], f.get_subexpr(v, d)); });
+    v.emplace_back(7, 0, [](random_formula& f, std::vector<func_decl>& v, unsigned d) {
+        z3::expr var(f.m_ctx);
         if (!v.empty() && f.m_new_var_gen(f.m_mt)) {
-            return v[(f.m_general_gen(f.m_mt) % v.size())](f.m_decls.placeholder());
+            var = v[(f.m_general_gen(f.m_mt) % v.size())](f.m_decls.placeholder());
         }
         else {
             Z3_sort domain_sort = f.m_decls.world_sort;
             func_decl func(f.m_ctx, Z3_mk_fresh_func_decl(f.m_ctx, "Var", 1, &domain_sort, f.m_ctx.bool_sort()));
             v.push_back(func);
-            return func(f.m_decls.placeholder());
+            var = func(f.m_decls.placeholder());
         }
+        if (f.m_general_gen(f.m_mt) % 2)
+            return !var;
+        return var;
     });
 
     return v;
@@ -52,7 +73,7 @@ unsigned random_formula::sum_cases() {
     return total;
 }
 
-random_formula::random_formula(context& ctx, const modal_decls& decls, unsigned seed, unsigned relation_cnt) :
+random_formula::random_formula(context& ctx, const modal_decls& decls, unsigned seed, unsigned relation_cnt, bool prevent_collaps) :
     m_ctx(ctx), m_last_seed(seed), m_current_seed(seed),
     m_cases(create_cases(this)),
     m_mt(seed),
@@ -62,7 +83,8 @@ random_formula::random_formula(context& ctx, const modal_decls& decls, unsigned 
     m_new_var_gen(0.5),
     m_decls(decls),
     m_relations(ctx),
-    m_max_depth(6)
+    m_max_depth(6),
+    m_simplified(prevent_collaps)
     {
     
     SASSERT(relation_cnt > 0);
@@ -103,5 +125,16 @@ repeat:
     if (i == m_cases.size() - 1)
         e = std::get<2>(m_cases[i])(*this, vars, depth + 1);
     
+    return e;
+}
+
+expr random_formula::get_subexpr(std::vector<func_decl>& vars, unsigned depth, std::unordered_set<expr, expr_not_hash, expr_not_eq>& already) {
+    expr e(m_ctx);
+    do {
+        e = get_subexpr(vars, depth);
+    } while (already.contains(e));
+    
+    if (m_simplified)
+        already.insert(e);
     return e;
 }

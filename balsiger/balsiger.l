@@ -3,8 +3,10 @@
 #include "y.tab.h"
 %}
 
-start sos\(formulas\)
-end end_of_list
+start1 begin
+end1 end
+start2 sos\(formulas\)
+end2 end_of_list
 lparen \(
 rparen \)
 not ~
@@ -21,6 +23,10 @@ dot \.
 ws [ \n]+
 
 %%
+{start1} return START1;
+{end1} return END1;
+{start2} return START2;
+{end2} return END2;
 {lparen} return LPAREN;
 {rparen} return RPAREN;
 {not} return NOT;
@@ -34,7 +40,5 @@ ws [ \n]+
 {false} return FALSE;
 {id} return ID;
 {dot} return DOT;
-{start} return START;
-{end} return END;
 {ws}
 %%

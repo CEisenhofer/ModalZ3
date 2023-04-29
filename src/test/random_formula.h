@@ -5,6 +5,19 @@
 
 using namespace z3;
 
+struct expr_not_hash {
+    size_t operator()(const z3::expr& e) const {
+        return e.is_not() ? e.arg(0).hash() : e.hash();
+    }
+};
+struct expr_not_eq {
+    bool operator()(const z3::expr& e1, const z3::expr& e2) const {
+        expr f1 = e1.is_not() ? e1.arg(0) : e1;
+        expr f2 = e2.is_not() ? e2.arg(0) : e2;
+        return eq(f1, f2);
+    }
+};
+
 class random_formula {
 
     unsigned m_last_seed = 0;
@@ -24,6 +37,7 @@ class random_formula {
     expr_vector m_relations;
     
     unsigned m_max_depth;
+    bool m_simplified; // the simplifier will not really be able to simplify a lot if this is true
     
     decltype(m_cases) create_cases(random_formula* f);
     unsigned sum_cases();
@@ -31,11 +45,12 @@ class random_formula {
     void init_generator();
     
     expr get_subexpr(std::vector<func_decl>& vars, unsigned depth);
+    expr get_subexpr(std::vector<func_decl>& vars, unsigned depth, std::unordered_set<expr, expr_not_hash, expr_not_eq>& already);
     
 public:
     
-    random_formula(context& ctx, const modal_decls& decls, unsigned relation_cnt) : random_formula(ctx, decls, (unsigned)time(nullptr), relation_cnt) {}
-    random_formula(context& ctx, const modal_decls& decls, unsigned seed, unsigned relation_cnt);
+    random_formula(context& ctx, const modal_decls& decls, unsigned relation_cnt, bool simplified) : random_formula(ctx, decls, (unsigned)time(nullptr), relation_cnt, simplified) {}
+    random_formula(context& ctx, const modal_decls& decls, unsigned seed, unsigned relation_cnt, bool prevent_collaps);
     
     void set_max_depth(unsigned max) {
         m_max_depth = max;

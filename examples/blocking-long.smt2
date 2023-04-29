@@ -2,4 +2,4 @@
 (declare-const r1 Relation)
 (assert (global true))
 ; (assert (global false))
-(assert (global (dia r1 (and (not (p world)) (dia r1 (and (not (p world)) (dia r1 (dia r1 (dia r1 (dia r1 (dia r1 (dia r1 (p world)))))))))))))
+(assert (global (dia r1 (and (not (p world)) (dia r1 (and (not (p world)) (dia r1 (p world))))))))

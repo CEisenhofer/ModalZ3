@@ -43,7 +43,7 @@ void test(int idx, const args& args) {
     memset(world_cnt, 0, sizeof(unsigned) * 3);
 
     for (unsigned r = args.min_relations; r <= args.max_relations; r++) {
-        random_formula rf(ctx, decls, r);
+        random_formula rf(ctx, decls, r, true);
         rf.set_max_depth(args.max_depth);
         
 #if 0
@@ -89,7 +89,7 @@ void test(int idx, const args& args) {
                 || cnt_str(e.to_string(), "box") < args.min_modals
                 || cnt_str(e.to_string(), "box") > args.max_modals
                 ) { // hopefully avoid trivial examples
-                    // std::cout << "Failed to generate; repeating (" << e.to_string().length() << "; " << cnt_str(e.to_string(), "box") << ")" << std::endl;
+                    std::cout << "Failed to generate; repeating (" << e.to_string().length() << "; " << cnt_str(e.to_string(), "box") << ")" << std::endl;
                     goto rep;
                 }
             }
@@ -152,9 +152,16 @@ void test(int idx, const args& args) {
             time[2].push_back(lazy_up.solving_time().count());
 
             if (idx < 0) {
-                std::cout << std_translation.solving_time().count() << " STD" << std::endl;
-                std::cout << iterative_deepening.solving_time().count() << " ID" << std::endl;
-                std::cout << lazy_up.solving_time().count() << " UP" << std::endl;
+                std::cout << "STD: " << std_translation.solving_time().count() << std::endl;
+                std::cout << "ID:  " << iterative_deepening.solving_time().count() << std::endl;
+                std::cout << "UP:  " << lazy_up.solving_time().count() << std::endl;
+                std::cout << "Length: " << e.to_string().length() << "; Modalities: " << cnt_str(e.to_string(), "box") << std::endl;
+                std::cout << (result_lazy_up == sat ? "SAT" : result_lazy_up == unsat ? "UNSAT" : "UNKNOWN") << std::endl;
+                if (result_std_translation == sat) {
+                    std::cout << "STD Size: " << std_translation.domain_size() << std::endl;
+                    std::cout << "ID  Size: " << iterative_deepening.domain_size() << std::endl;
+                    std::cout << "UP  Size: " << lazy_up.domain_size() << std::endl;
+                }
             }
             
             if (result_std_translation == sat) {
