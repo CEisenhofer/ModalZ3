@@ -131,7 +131,6 @@ int main(int argc, char** argv) {
             continue;
         }
         if (strncmp(argv[start], "-tr=", 4) == 0) {
-            log_file = argv[start] + 4;
             threads = atoi(argv[start] + 4);
             if (threads < 1) {
                 std::cerr << "the number of threads has to be positive" << std::endl;
