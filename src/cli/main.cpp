@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
         }
         if (strncmp(argv[start], "-t=", 3) == 0) {
             limit_time = atoi(argv[start] + 3);
-            if (limit_time < 1) {
+            if (limit_time < 0) {
                 std::cerr << "the time limit must be non-negative" << std::endl;
                 return -1;
             }
