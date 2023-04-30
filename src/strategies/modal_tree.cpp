@@ -1,5 +1,3 @@
-#pragma once
-
 #include <algorithm>
 #include "modal_tree.h"
 
