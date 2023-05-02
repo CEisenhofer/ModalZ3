@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define YYMAXDEPTH 1000000
+
 enum Flavour {
 	ETRUE,
 	EFALSE,
@@ -94,7 +96,7 @@ extern const char *yytext;
 extern unsigned yyleng;
 
 void yyerror(const char *err) {
-	fprintf(stderr, "err near: %s\n", yytext);
+	fprintf(stderr, "err near: %s (%s)\n", yytext, err);
 	exit(EXIT_FAILURE);
 }
 
@@ -115,84 +117,71 @@ unsigned num_ids = 0;
 %token EQV
 %token BOX
 %token DIA
-%token DOT
-%token START1
-%token START2
-%token END1
-%token END2
+%token START
+%token END
 
 %%
-input : input11 | input12 | input21 | input22
+input : START optional_toplevel END {};
 
-input11: START1 unary END1 {
-     printf("(assert ");
-     print_expr($2);
-     printf(")\n");
-};
+optional_toplevel : | toplevel {};
 
-input12: START1 END1 {
-};
-
-input21: START2 DOT unary DOT END2 DOT {
-     printf("(assert ");
-     print_expr($3);
-     printf(")\n");
-};
-
-input22: START2 DOT DOT END2 DOT {
+toplevel : unary {
+	printf("(assert ");
+	print_expr($1);
+	printf(")\n");
 };
 
 binary: or | and | imp | eqv | unary;
 
 or: unary OR binary {
-   $$.flavour = EOR;
-   $$.head = NULL;
-   $$.expr1 = box_expr($1);
-   $$.expr2 = box_expr($3);
+	$$.flavour = EOR;
+	$$.head = NULL;
+	$$.expr1 = box_expr($1);
+	$$.expr2 = box_expr($3);
 }
 
 and: unary AND binary {
-   $$.flavour = EAND;
-   $$.head = NULL;
-   $$.expr1 = box_expr($1);
-   $$.expr2 = box_expr($3);
+	$$.flavour = EAND;
+	$$.head = NULL;
+	$$.expr1 = box_expr($1);
+	$$.expr2 = box_expr($3);
 }
 
 imp: unary IMP unary {
-   $$.flavour = EIMP;
-   $$.head = NULL;
-   $$.expr1 = box_expr($1);
-   $$.expr2 = box_expr($3);
+	$$.flavour = EIMP;
+	$$.head = NULL;
+	$$.expr1 = box_expr($1);
+	$$.expr2 = box_expr($3);
 }
 
 eqv: unary EQV unary {
-   $$.flavour = EEQV;
-   $$.head = NULL;
-   $$.expr1 = box_expr($1);
-   $$.expr2 = box_expr($3);
+	$$.flavour = EEQV;
+	$$.head = NULL;
+	$$.expr1 = box_expr($1);
+	$$.expr2 = box_expr($3);
 }
 
 unary: box | dia | not | parens | id | bool;
 
 box: BOX unary {
-   $$.flavour = EBOX;
-   $$.head = NULL;
-   $$.expr1 = box_expr($2);
-   $$.expr2 = NULL;
+	$$.flavour = EBOX;
+	$$.head = NULL;
+	$$.expr1 = box_expr($2);
+	$$.expr2 = NULL;
 };
 
 dia: DIA unary {
-   $$.flavour = EDIA;
-   $$.head = NULL;
-   $$.expr1 = box_expr($2);
-   $$.expr2 = NULL;
+	$$.flavour = EDIA;
+	$$.head = NULL;
+	$$.expr1 = box_expr($2);
+	$$.expr2 = NULL;
 };
 
 not: NOT unary {
-   $$.flavour = ENOT;
-   $$.head = NULL;
-   $$.expr1 = box_expr($2);
-   $$.expr2 = NULL;
+	$$.flavour = ENOT;
+	$$.head = NULL;
+	$$.expr1 = box_expr($2);
+	$$.expr2 = NULL;
 };
 
 parens: LPAREN binary RPAREN { $$ = $2; };
@@ -233,9 +222,9 @@ id: ID {
 };
 
 bool: true | false {
-    $$.head = NULL;
-    $$.expr1 = NULL;
-    $$.expr2 = NULL;
+	$$.head = NULL;
+	$$.expr1 = NULL;
+	$$.expr2 = NULL;
 }
 
 true: TRUE { $$.flavour = ETRUE; }
@@ -245,9 +234,9 @@ false: FALSE { $$.flavour = EFALSE; }
 
 int main(int argc, char** argv) {
 	printf("(declare-const r Relation)\n");
-    if (argc == 2 && argv[1][0] == 'K' && argv[1][1] == '4' && argv[1][2] == '\0')
-        printf("(assert (trans r))\n");
+	if (argc == 2 && !strcmp(argv[1], "K4"))
+		printf("(assert (trans r))\n");
+
 	yyparse();
-	//printf("(check-sat)\n");
 	return 0;
 }

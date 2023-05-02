@@ -3,10 +3,8 @@
 #include "y.tab.h"
 %}
 
-start1 begin
-end1 end
-start2 sos\(formulas\)
-end2 end_of_list
+start begin|(sos\(formulas\)\.)
+end end|end_of_list
 lparen \(
 rparen \)
 not ~
@@ -19,14 +17,11 @@ dia <(r1)?>
 true true
 false false
 id [a-z][A-Za-z0-9]*
-dot \.
 ws [ \n]+
 
 %%
-{start1} return START1;
-{end1} return END1;
-{start2} return START2;
-{end2} return END2;
+{start} return START;
+{end} return END;
 {lparen} return LPAREN;
 {rparen} return RPAREN;
 {not} return NOT;
@@ -39,6 +34,5 @@ ws [ \n]+
 {true} return TRUE;
 {false} return FALSE;
 {id} return ID;
-{dot} return DOT;
 {ws}
 %%
